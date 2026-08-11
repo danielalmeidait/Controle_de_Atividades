@@ -5,3 +5,7 @@ node_modules
 backups/*.log
 backups/full/*.db
 backups/incremental/*.db
+
+# Database
+*.db
+*.db-journal

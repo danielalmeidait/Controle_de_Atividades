@@ -5,6 +5,91 @@ Cada entrada inclui o que foi alterado, quais arquivos foram tocados e decisões
 
 ---
 
+## [2026-06-15] Sessão 2 — Correções de segurança, qualidade e migração de schema
+
+### 1. Rota de backup: exec() → spawn() com mapa fixo
+**Tipo:** Correção de segurança (backend)
+
+Substituído `exec(command)` com string dinâmica por `spawn('npm', ['run', script])` com mapa fixo de scripts permitidos. Elimina risco de injeção de comando.
+
+**Arquivos alterados:**
+- `server/src/routes.ts` — constante `ALLOWED_BACKUP_SCRIPTS`, uso de `spawn` do `child_process`
+
+---
+
+### 2. isTaskDone / isTaskWip: detecção mais robusta
+**Tipo:** Correção de qualidade (backend)
+
+Substituída detecção por substring simples por lista de padrões + normalização de acentos (`normalize('NFD')`). Status como "Finalizado", "Encerrado" ou "Completo" agora são reconhecidos corretamente.
+
+**Arquivos alterados:**
+- `server/src/routes.ts` — constantes `DONE_PATTERNS`, `WIP_PATTERNS`, função `normalizeStr`, reescritas `isTaskDone`/`isTaskWip`
+
+---
+
+### 3. Remoção de updateCounters() — contadores computados dinamicamente
+**Tipo:** Refatoração de performance (backend)
+
+Removida a função `updateCounters()` que rodava N queries após cada operação CRUD. Os contadores (`taskCount`, `inProgressCount`) agora são calculados no momento da requisição nos endpoints GET de áreas, sistemas, tipos e status, usando `Promise.all` para paralelizar as queries.
+
+**Arquivos alterados:**
+- `server/src/routes.ts` — remoção de `updateCounters`, GET routes de `/areas`, `/systems`, `/task-types`, `/task-statuses` e `/stats` atualizados
+
+---
+
+### 4. Validação de campos obrigatórios no POST /api/tasks
+**Tipo:** Correção de segurança (backend)
+
+O endpoint de criação de tarefas agora lista explicitamente os campos aceitos e rejeita requisições com campos obrigatórios ausentes. Eliminado o `...req.body` direto no Prisma.
+
+**Arquivos alterados:**
+- `server/src/routes.ts` — POST `/tasks` e PUT `/tasks/:id` com destructuring e validação explícita
+
+---
+
+### 5. Constante de tarefas estagnadas externalizada
+**Tipo:** Melhoria de manutenibilidade (backend)
+
+O valor `5` (dias sem atualização para considerar tarefa estagnada) foi extraído para a constante `STALE_TASK_THRESHOLD_DAYS` no topo do arquivo.
+
+**Arquivos alterados:**
+- `server/src/routes.ts` — constante `STALE_TASK_THRESHOLD_DAYS = 5`
+
+---
+
+### 6. Aba "IA Support" removida do menu lateral
+**Tipo:** Correção de UX (frontend)
+
+A aba "Apoio IA" foi removida da sidebar pois o formulário `AISupportForm` não persiste dados no backend. A remoção evita que o usuário acesse uma funcionalidade incompleta.
+
+**Arquivos alterados:**
+- `src/App.tsx` — item `ai-support` removido do array de navegação
+
+---
+
+### 7. Migração de schema: remoção de contadores e datas para DateTime
+**Tipo:** Melhoria de schema (banco de dados)
+
+Duas mudanças aplicadas via `prisma db push`:
+
+**a) Remoção de campos redundantes em Area, System, TaskType, TaskStatus:**
+- Removidos `taskCount` e `inProgressCount` das 4 tabelas (item 3 acima os computa dinamicamente)
+
+**b) deadline e requestDate migrados de String para DateTime:**
+- `deadline: String` → `DateTime?` (nullable — nem toda tarefa tem prazo)
+- `requestDate: String` → `DateTime` (sempre preenchido na criação)
+- Dados migrados: 24 deadlines convertidos de `YYYY-MM-DD` para ISO 8601 completo (`YYYY-MM-DDTHH:MM:SS.000Z`); 1 deadline vazio (Portal ESO) definido como `null`
+
+**Arquivos alterados:**
+- `server/prisma/schema.prisma` — modelos atualizados
+- `src/types.ts` — `Task.deadline: string` → `string | null`
+- `src/App.tsx` — comparação de data corrigida para usar `.startsWith()` em vez de `===`
+- `server/src/routes.ts` — `deadline: deadline ?? ''` → `deadline: deadline || null`
+
+**Backup realizado antes:** `server/backups/full/dev_full_pre-refactor_2026-06-15_23-42-46.db`
+
+---
+
 ## [2026-05-28] Sessão 1 — Melhorias de UX, Métricas, Ideias, Backup e Documentação
 
 ### 1. Toast Notifications

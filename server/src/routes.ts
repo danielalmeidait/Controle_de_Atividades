@@ -2,61 +2,47 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
 
 const router = Router();
 const prisma = new PrismaClient();
 
-// Helper para atualizar contadores de Áreas e Sistemas
-async function updateCounters() {
-    const tasks = await prisma.task.findMany();
-    const areas = await prisma.area.findMany();
-    const systems = await prisma.system.findMany();
+const STALE_TASK_THRESHOLD_DAYS = 5;
 
-    for (const area of areas) {
-        const areaTasks = tasks.filter(t => t.area === area.name);
-        await prisma.area.update({
-            where: { id: area.id },
-            data: {
-                taskCount: areaTasks.length,
-                inProgressCount: areaTasks.filter(t => !isTaskDone(t.status)).length
-            }
-        });
-    }
+const DONE_PATTERNS = ['concluí', 'concluido', 'done', 'fim', 'finaliz', 'encerr', 'completo'];
+const WIP_PATTERNS  = ['andamento', 'wip', 'fazendo', 'progress', 'execut'];
 
-    for (const system of systems) {
-        const systemTasks = tasks.filter(t => t.system === system.name);
-        await prisma.system.update({
-            where: { id: system.id },
-            data: {
-                taskCount: systemTasks.length,
-                inProgressCount: systemTasks.filter(t => !isTaskDone(t.status)).length
-            }
-        });
-    }
+const ALLOWED_BACKUP_SCRIPTS: Record<string, string> = {
+    full:        'backup:full',
+    incremental: 'backup:incremental',
+};
+
+function normalizeStr(s: string): string {
+    return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-// Helper para parsear campos JSON de uma tarefa
+function isTaskDone(status: string): boolean {
+    if (!status) return false;
+    const s = normalizeStr(status);
+    return DONE_PATTERNS.some(p => s.includes(p));
+}
+
+function isTaskWip(status: string): boolean {
+    if (!status) return false;
+    const s = normalizeStr(status);
+    return WIP_PATTERNS.some(p => s.includes(p));
+}
+
 function parseTask(task: any) {
     return {
         ...task,
-        checklist: JSON.parse(task.checklist || '[]'),
+        checklist:     JSON.parse(task.checklist     || '[]'),
         updateHistory: JSON.parse(task.updateHistory || '[]'),
     };
 }
 
-function isTaskDone(status: string) {
-    if (!status) return false;
-    const s = status.toLowerCase();
-    return s.includes('concluí') || s.includes('done') || s.includes('fim');
-}
+// --- Tasks ---
 
-function isTaskWip(status: string) {
-    if (!status) return false;
-    const s = status.toLowerCase();
-    return s.includes('andamento') || s.includes('wip') || s.includes('fazendo');
-}
-
-// GET /api/tasks - Listar todas as tarefas
 router.get('/tasks', async (req, res) => {
     try {
         const tasks = await prisma.task.findMany({ orderBy: { id: 'desc' } });
@@ -66,7 +52,6 @@ router.get('/tasks', async (req, res) => {
     }
 });
 
-// GET /api/tasks/:id - Buscar tarefa por ID
 router.get('/tasks/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -78,53 +63,80 @@ router.get('/tasks/:id', async (req, res) => {
     }
 });
 
-// POST /api/tasks - Criar nova tarefa
 router.post('/tasks', async (req, res) => {
     try {
+        const {
+            name, type, area, system, requester, criticality, status,
+            deadline, requestDate, requestingArea, checklist, description, lastUpdate,
+        } = req.body;
+
+        if (!name || !type || !area || !system || !requester || !criticality || !status) {
+            return res.status(400).json({ error: 'Campos obrigatórios: name, type, area, system, requester, criticality, status.' });
+        }
+
         const newTask = await prisma.task.create({
             data: {
-                ...req.body,
-                checklist: JSON.stringify(req.body.checklist || []),
+                name,
+                type,
+                area,
+                system,
+                requester,
+                criticality,
+                status,
+                deadline:      deadline ? new Date(deadline) : null,
+                requestDate:   requestDate ? new Date(requestDate) : new Date(),
+                requestingArea: requestingArea ?? '',
+                description:   description   ?? '',
+                lastUpdate:    lastUpdate    ?? '',
+                checklist:     JSON.stringify(checklist || []),
                 updateHistory: JSON.stringify([]),
-                requestDate: req.body.requestDate || new Date().toISOString()
             }
         });
-        await updateCounters();
         res.status(201).json(parseTask(newTask));
     } catch (error) {
-        res.status(500).json({ error: 'Erro ao criar tarefa' });
+        console.error('[POST /tasks]', error);
+        const msg = error instanceof Error ? error.message : String(error);
+        res.status(500).json({ error: msg });
     }
 });
 
-// PUT /api/tasks/:id - Editar tarefa (appends lastUpdate to history if changed)
 router.put('/tasks/:id', async (req, res) => {
     const { id } = req.params;
     try {
         const existing = await prisma.task.findUnique({ where: { id: parseInt(id) } });
         if (!existing) return res.status(404).json({ error: 'Tarefa não encontrada' });
 
-        // Build updated history
+        const {
+            name, type, area, system, requester, criticality, status,
+            deadline, requestingArea, description, lastUpdate, checklist,
+        } = req.body;
+
         let history: { date: string; text: string }[] = [];
         try { history = JSON.parse(existing.updateHistory || '[]'); } catch { }
 
-        const newLastUpdate = req.body.lastUpdate;
-        if (newLastUpdate && newLastUpdate !== existing.lastUpdate) {
-            history.unshift({
-                date: new Date().toISOString(),
-                text: newLastUpdate
-            });
+        if (lastUpdate && lastUpdate !== existing.lastUpdate) {
+            history.unshift({ date: new Date().toISOString(), text: lastUpdate });
         }
 
         const updatedTask = await prisma.task.update({
             where: { id: parseInt(id) },
             data: {
-                ...req.body,
-                checklist: req.body.checklist ? JSON.stringify(req.body.checklist) : existing.checklist,
+                name:          name          ?? existing.name,
+                type:          type          ?? existing.type,
+                area:          area          ?? existing.area,
+                system:        system        ?? existing.system,
+                requester:     requester     ?? existing.requester,
+                criticality:   criticality   ?? existing.criticality,
+                status:        status        ?? existing.status,
+                deadline:      deadline !== undefined ? (deadline ? new Date(deadline) : null) : existing.deadline,
+                requestingArea: requestingArea ?? existing.requestingArea,
+                description:   description   ?? existing.description,
+                lastUpdate:    lastUpdate    ?? existing.lastUpdate,
+                checklist:     checklist ? JSON.stringify(checklist) : existing.checklist,
                 updateHistory: JSON.stringify(history),
-                updatedAt: new Date()
+                updatedAt:     new Date(),
             }
         });
-        await updateCounters();
         res.json(parseTask(updatedTask));
     } catch (error) {
         console.error(error);
@@ -132,12 +144,10 @@ router.put('/tasks/:id', async (req, res) => {
     }
 });
 
-// DELETE /api/tasks/:id - Deletar tarefa
 router.delete('/tasks/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await prisma.task.delete({ where: { id: parseInt(id) } });
-        await updateCounters();
         res.json({ message: 'Tarefa deletada' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar tarefa' });
@@ -145,10 +155,19 @@ router.delete('/tasks/:id', async (req, res) => {
 });
 
 // --- Áreas ---
+
 router.get('/areas', async (req, res) => {
     try {
-        const areas = await prisma.area.findMany({ orderBy: { name: 'asc' } });
-        res.json(areas);
+        const [areas, tasks] = await Promise.all([
+            prisma.area.findMany({ orderBy: { name: 'asc' } }),
+            prisma.task.findMany({ select: { area: true, status: true } }),
+        ]);
+        const result = areas.map(area => ({
+            ...area,
+            taskCount:       tasks.filter(t => t.area === area.name).length,
+            inProgressCount: tasks.filter(t => t.area === area.name && !isTaskDone(t.status)).length,
+        }));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar áreas' });
     }
@@ -157,8 +176,7 @@ router.get('/areas', async (req, res) => {
 router.post('/areas', async (req, res) => {
     try {
         const newArea = await prisma.area.create({ data: { name: req.body.name } });
-        await updateCounters();
-        res.status(201).json(newArea);
+        res.status(201).json({ ...newArea, taskCount: 0, inProgressCount: 0 });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao criar área' });
     }
@@ -171,7 +189,6 @@ router.put('/areas/:id', async (req, res) => {
             where: { id: parseInt(id) },
             data: { name: req.body.name }
         });
-        await updateCounters();
         res.json(updatedArea);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao atualizar área' });
@@ -182,7 +199,6 @@ router.delete('/areas/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await prisma.area.delete({ where: { id: parseInt(id) } });
-        await updateCounters();
         res.json({ message: 'Área deletada' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar área' });
@@ -190,10 +206,19 @@ router.delete('/areas/:id', async (req, res) => {
 });
 
 // --- Sistemas ---
+
 router.get('/systems', async (req, res) => {
     try {
-        const systems = await prisma.system.findMany({ orderBy: { name: 'asc' } });
-        res.json(systems);
+        const [systems, tasks] = await Promise.all([
+            prisma.system.findMany({ orderBy: { name: 'asc' } }),
+            prisma.task.findMany({ select: { system: true, status: true } }),
+        ]);
+        const result = systems.map(system => ({
+            ...system,
+            taskCount:       tasks.filter(t => t.system === system.name).length,
+            inProgressCount: tasks.filter(t => t.system === system.name && !isTaskDone(t.status)).length,
+        }));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar sistemas' });
     }
@@ -202,8 +227,7 @@ router.get('/systems', async (req, res) => {
 router.post('/systems', async (req, res) => {
     try {
         const newSystem = await prisma.system.create({ data: { name: req.body.name } });
-        await updateCounters();
-        res.status(201).json(newSystem);
+        res.status(201).json({ ...newSystem, taskCount: 0, inProgressCount: 0 });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao criar sistema' });
     }
@@ -216,7 +240,6 @@ router.put('/systems/:id', async (req, res) => {
             where: { id: parseInt(id) },
             data: { name: req.body.name }
         });
-        await updateCounters();
         res.json(updatedSystem);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao atualizar sistema' });
@@ -227,7 +250,6 @@ router.delete('/systems/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await prisma.system.delete({ where: { id: parseInt(id) } });
-        await updateCounters();
         res.json({ message: 'Sistema deletado' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar sistema' });
@@ -235,10 +257,19 @@ router.delete('/systems/:id', async (req, res) => {
 });
 
 // --- Tipos de Atividade ---
+
 router.get('/task-types', async (req, res) => {
     try {
-        const types = await prisma.taskType.findMany({ orderBy: { name: 'asc' } });
-        res.json(types);
+        const [types, tasks] = await Promise.all([
+            prisma.taskType.findMany({ orderBy: { name: 'asc' } }),
+            prisma.task.findMany({ select: { type: true, status: true } }),
+        ]);
+        const result = types.map(t => ({
+            ...t,
+            taskCount:       tasks.filter(tk => tk.type === t.name).length,
+            inProgressCount: tasks.filter(tk => tk.type === t.name && !isTaskDone(tk.status)).length,
+        }));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar tipos' });
     }
@@ -247,8 +278,7 @@ router.get('/task-types', async (req, res) => {
 router.post('/task-types', async (req, res) => {
     try {
         const newType = await prisma.taskType.create({ data: { name: req.body.name } });
-        await updateCounters();
-        res.status(201).json(newType);
+        res.status(201).json({ ...newType, taskCount: 0, inProgressCount: 0 });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao criar tipo' });
     }
@@ -261,7 +291,6 @@ router.put('/task-types/:id', async (req, res) => {
             where: { id: parseInt(id) },
             data: { name: req.body.name }
         });
-        await updateCounters();
         res.json(updatedType);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao atualizar tipo' });
@@ -272,7 +301,6 @@ router.delete('/task-types/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await prisma.taskType.delete({ where: { id: parseInt(id) } });
-        await updateCounters();
         res.json({ message: 'Tipo deletado' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar tipo' });
@@ -280,10 +308,19 @@ router.delete('/task-types/:id', async (req, res) => {
 });
 
 // --- Status de Atividades ---
+
 router.get('/task-statuses', async (req, res) => {
     try {
-        const statuses = await prisma.taskStatus.findMany({ orderBy: { name: 'asc' } });
-        res.json(statuses);
+        const [statuses, tasks] = await Promise.all([
+            prisma.taskStatus.findMany({ orderBy: { name: 'asc' } }),
+            prisma.task.findMany({ select: { status: true } }),
+        ]);
+        const result = statuses.map(s => ({
+            ...s,
+            taskCount:       tasks.filter(t => t.status === s.name).length,
+            inProgressCount: tasks.filter(t => t.status === s.name && !isTaskDone(t.status)).length,
+        }));
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar status' });
     }
@@ -292,8 +329,7 @@ router.get('/task-statuses', async (req, res) => {
 router.post('/task-statuses', async (req, res) => {
     try {
         const newStatus = await prisma.taskStatus.create({ data: { name: req.body.name } });
-        await updateCounters();
-        res.status(201).json(newStatus);
+        res.status(201).json({ ...newStatus, taskCount: 0, inProgressCount: 0 });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao criar status' });
     }
@@ -306,7 +342,6 @@ router.put('/task-statuses/:id', async (req, res) => {
             where: { id: parseInt(id) },
             data: { name: req.body.name }
         });
-        await updateCounters();
         res.json(updatedStatus);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao atualizar status' });
@@ -317,7 +352,6 @@ router.delete('/task-statuses/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await prisma.taskStatus.delete({ where: { id: parseInt(id) } });
-        await updateCounters();
         res.json({ message: 'Status deletado' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar status' });
@@ -325,6 +359,7 @@ router.delete('/task-statuses/:id', async (req, res) => {
 });
 
 // --- Ideias (Segundo Cérebro) ---
+
 router.get('/ideas', async (req, res) => {
     try {
         const ideas = await prisma.idea.findMany({ orderBy: [{ reviewDate: 'asc' }, { createdAt: 'desc' }] });
@@ -338,9 +373,9 @@ router.post('/ideas', async (req, res) => {
     try {
         const idea = await prisma.idea.create({
             data: {
-                title: req.body.title,
-                content: req.body.content || '',
-                reviewDate: req.body.reviewDate || null,
+                title:         req.body.title,
+                content:       req.body.content       || '',
+                reviewDate:    req.body.reviewDate    || null,
                 relatedTaskId: req.body.relatedTaskId || null,
                 relatedSystem: req.body.relatedSystem || null,
             }
@@ -357,12 +392,12 @@ router.put('/ideas/:id', async (req, res) => {
         const idea = await prisma.idea.update({
             where: { id: parseInt(id) },
             data: {
-                title: req.body.title,
-                content: req.body.content,
-                reviewDate: req.body.reviewDate || null,
+                title:         req.body.title,
+                content:       req.body.content,
+                reviewDate:    req.body.reviewDate    || null,
                 relatedTaskId: req.body.relatedTaskId || null,
                 relatedSystem: req.body.relatedSystem || null,
-                updatedAt: new Date()
+                updatedAt:     new Date()
             }
         });
         res.json(idea);
@@ -381,84 +416,95 @@ router.delete('/ideas/:id', async (req, res) => {
     }
 });
 
-// GET /api/stats - Estatísticas para o Dashboard
+// --- Stats ---
+
 router.get('/stats', async (req, res) => {
     try {
-        const tasks = await prisma.task.findMany();
-        const areas = await prisma.area.findMany();
-        const systems = await prisma.system.findMany();
-        const taskTypes = await prisma.taskType.findMany();
-        const taskStatuses = await prisma.taskStatus.findMany();
+        const [tasks, areas, systems, taskTypes, taskStatuses] = await Promise.all([
+            prisma.task.findMany(),
+            prisma.area.findMany(),
+            prisma.system.findMany(),
+            prisma.taskType.findMany(),
+            prisma.taskStatus.findMany(),
+        ]);
 
-        const fiveDaysAgo = new Date();
-        fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() - STALE_TASK_THRESHOLD_DAYS);
 
         const staleTasks = tasks
-            .filter(t => !isTaskDone(t.status) && new Date(t.updatedAt) < fiveDaysAgo)
+            .filter(t => !isTaskDone(t.status) && new Date(t.updatedAt) < threshold)
             .map(t => ({ id: t.id, name: t.name, updatedAt: t.updatedAt }));
 
+        const areasWithCounts = areas.map(area => ({
+            ...area,
+            taskCount:       tasks.filter(t => t.area === area.name).length,
+            inProgressCount: tasks.filter(t => t.area === area.name && !isTaskDone(t.status)).length,
+        }));
+
+        const systemsWithCounts = systems.map(system => ({
+            ...system,
+            taskCount:       tasks.filter(t => t.system === system.name).length,
+            inProgressCount: tasks.filter(t => t.system === system.name && !isTaskDone(t.status)).length,
+        }));
+
         res.json({
-            areas,
-            systems,
+            areas:      areasWithCounts,
+            systems:    systemsWithCounts,
             taskTypes,
             taskStatuses,
             totalTasks: tasks.length,
-            wipTasks: tasks.filter(t => isTaskWip(t.status)).length,
-            doneTasks: tasks.filter(t => isTaskDone(t.status)).length,
-            staleTasks
+            wipTasks:   tasks.filter(t => isTaskWip(t.status)).length,
+            doneTasks:  tasks.filter(t => isTaskDone(t.status)).length,
+            staleTasks,
         });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao calcular estatísticas' });
     }
 });
 
-// GET /api/system/status - Status do banco e últimas atualizações
+// --- System Status ---
+
 router.get('/system/status', async (req, res) => {
     try {
         const recentUpdates = await prisma.task.findMany({
             orderBy: { updatedAt: 'desc' },
             take: 10,
             select: {
-                id: true,
-                name: true,
-                status: true,
-                lastUpdate: true,
-                updatedAt: true,
-                area: true,
-                requester: true
+                id: true, name: true, status: true,
+                lastUpdate: true, updatedAt: true, area: true, requester: true,
             }
         });
-
-        // Se a query funcionar, consideramos o banco online
-        res.json({
-            status: 'online',
-            recentUpdates
-        });
+        res.json({ status: 'online', recentUpdates });
     } catch (error) {
         res.status(500).json({ status: 'offline', recentUpdates: [] });
     }
 });
 
-// POST /api/backup/run — dispara backup manual
+// --- Backup ---
+
 router.post('/backup/run', (req, res) => {
     const { type } = req.body;
-    if (type !== 'full' && type !== 'incremental') {
+    const script = ALLOWED_BACKUP_SCRIPTS[type];
+    if (!script) {
         return res.status(400).json({ error: 'Tipo inválido. Use "full" ou "incremental".' });
     }
 
-    const { exec } = require('child_process');
     const serverRoot = path.resolve(__dirname, '../..');
-    const command = `npm run backup:${type}`;
+    const child = spawn('npm', ['run', script], { cwd: serverRoot, shell: true });
 
-    exec(command, { cwd: serverRoot }, (error: any, stdout: string, stderr: string) => {
-        if (error) {
-            return res.status(500).json({ error: error.message, output: stderr || stdout });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+    child.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+    child.on('close', (code: number) => {
+        if (code !== 0) {
+            return res.status(500).json({ error: stderr || 'Backup falhou', output: stdout });
         }
         res.json({ success: true, output: stdout });
     });
 });
 
-// GET /api/backup/status — status do sistema de backup
 router.get('/backup/status', (req, res) => {
     try {
         const backupRoot = path.resolve(__dirname, '../../backups');
@@ -488,11 +534,11 @@ router.get('/backup/status', (req, res) => {
         }
 
         res.json({
-            lastFullBackup:          getLatestFile(fullDir),
-            lastIncrementalBackup:   getLatestFile(incDir),
-            fullCount:               countFiles(fullDir),
-            incrementalCount:        countFiles(incDir),
-            recentLogs
+            lastFullBackup:        getLatestFile(fullDir),
+            lastIncrementalBackup: getLatestFile(incDir),
+            fullCount:             countFiles(fullDir),
+            incrementalCount:      countFiles(incDir),
+            recentLogs,
         });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar status de backup' });

@@ -114,6 +114,57 @@ e podemos priorizar o que fazer a seguir.
 
 ---
 
+## Sessão 2 — 2026-06-15
+
+### O que foi feito
+
+Sessão focada em correções de segurança, qualidade de código e migração de schema. Não foram adicionadas funcionalidades novas.
+
+**Ponto de partida:** análise do projeto identificou 9 pontos frágeis. Itens 5 e 9 envolviam banco de dados — usuário autorizou após entender que backup seria feito antes.
+
+**Backup criado antes das mudanças:** `server/backups/full/dev_full_pre-refactor_2026-06-15_23-42-46.db`
+
+### O que foi feito
+
+| Item | Descrição | Status |
+|---|---|---|
+| 1 | exec() → spawn() com mapa fixo na rota de backup | Concluído |
+| 2 | isTaskDone/isTaskWip com normalização de acentos e mais padrões | Concluído |
+| 3 | Remoção de updateCounters() — contadores dinâmicos nos GET routes | Concluído |
+| 4 | Validação explícita de campos no POST/PUT de tarefas | Concluído |
+| 5 | deadline e requestDate migrados de String para DateTime no schema | Concluído |
+| 6 | Aba "Apoio IA" removida do menu (formulário sem backend) | Concluído |
+| 7 | Constante STALE_TASK_THRESHOLD_DAYS externalizada | Concluído |
+| 8 | Contadores (taskCount, inProgressCount) removidos do schema | Concluído |
+
+### Decisões tomadas
+
+1. **Itens 5 e 9 executados com banco** — usuário autorizou explicitamente após confirmar que backup seria criado e que dados perdidos poderiam ser recuperados do backup
+2. **deadline nullable (DateTime?)** — tarefas sem prazo agora têm `null` em vez de string vazia
+3. **1970-01-01 placeholder** — usado temporariamente para contornar restrição NOT NULL durante conversão; depois definido como null
+4. **Prisma db push** em vez de `migrate dev` — ambiente não-interativo exigiu o uso de `db push --accept-data-loss`
+5. **Aba IA Support removida** — em vez de manter funcionalidade incompleta visível
+
+### Arquivos alterados
+
+- `server/src/routes.ts` — reescrita completa (backup, validação, contadores, constantes)
+- `server/prisma/schema.prisma` — deadline/requestDate como DateTime, remoção de contadores
+- `src/types.ts` — `Task.deadline: string | null`
+- `src/App.tsx` — remoção da aba AI Support, correção de comparação de data
+
+### O que ficou pendente para próximas sessões
+
+1. **Salvar formulário IA no backend** — criar modelo Prisma + endpoints + histórico (o formulário existe em `src/components/AISupportForm.tsx` mas não está acessível na UI)
+2. **Quebrar App.tsx** — ~2200 linhas ainda monolítico; extrair hooks (useTasks, useTheme, useFilters) e componentes (TaskModal, MetricsView, etc.)
+3. **Kanban view** — visão alternativa com drag-and-drop TBD → WIP → Done
+4. **Autenticação JWT** — login básico com papéis (admin vs viewer)
+5. **Testes unitários** — isTaskDone, isTaskWip, filtros, helpers
+6. **Filtros extras** — criticidade e tipo nas abas Frentes e Sistemas
+7. **Filtro por período/data** — seletor de intervalo na visão consolidada
+8. **Tarefas recorrentes** — funcionalidade principal que motivou a revisão do projeto (não implementada ainda)
+
+---
+
 ## Template para novas sessões
 
 Copie e preencha ao final de cada sessão:

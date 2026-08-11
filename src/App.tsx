@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus,
   Search,
@@ -28,7 +28,11 @@ import {
   TrendingUp,
   Lightbulb,
   NotebookPen,
-  Link2
+  Link2,
+  ListTodo,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 , Home} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -177,6 +181,22 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
   };
 
   const handleSave = () => {
+    if (!editedTask.name?.trim()) {
+      alert('Nome da tarefa é obrigatório.');
+      return;
+    }
+    if (!editedTask.requester?.trim()) {
+      alert('Solicitante é obrigatório.');
+      return;
+    }
+    if (!editedTask.type) {
+      alert('Tipo da tarefa é obrigatório. Selecione um tipo.');
+      return;
+    }
+    if (!editedTask.status) {
+      alert('Status da tarefa é obrigatório. Selecione um status.');
+      return;
+    }
     const payload: Partial<Task> = {
       ...editedTask,
       checklist: checklistItems,
@@ -227,7 +247,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
               {/* Left column */}
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Nome da Tarefa</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Nome da Tarefa <span className="text-brand-red">*</span></label>
                   <input name="name" value={editedTask.name || ''} onChange={handleChange}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
                 </div>
@@ -284,7 +304,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Solicitante</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Solicitante <span className="text-brand-red">*</span></label>
                   <input name="requester" value={editedTask.requester || ''} onChange={handleChange}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
                 </div>
@@ -299,7 +319,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
               {/* Description */}
               <div className="col-span-full space-y-1">
                 <label className="text-xs font-bold text-slate-500 uppercase">Descrição (User Story)</label>
-                <textarea name="description" value={editedTask.description || ''} onChange={handleChange} rows={2}
+                <textarea name="description" value={editedTask.description || ''} onChange={handleChange} rows={8}
                   className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
               </div>
 
@@ -523,11 +543,12 @@ interface IdeaModalProps {
   onClose: () => void;
   onSave: (idea: Partial<Idea>) => void;
   onDelete?: (id: number) => void;
+  onTurnIntoTask?: (idea: Idea) => void;
   tasks: Task[];
   systems: System[];
 }
 
-const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, tasks, systems }: IdeaModalProps) => {
+const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, tasks, systems }: IdeaModalProps) => {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [reviewDate, setReviewDate] = useState('');
@@ -565,6 +586,15 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, tasks, systems }: 
             <h2 className="text-xl font-bold">{isNew ? 'Nova Ideia' : 'Editar Ideia'}</h2>
           </div>
           <div className="flex items-center gap-2">
+            {!isNew && onTurnIntoTask && (
+              <button
+                onClick={() => onTurnIntoTask(idea as Idea)}
+                className="p-2 hover:bg-white/20 rounded-full transition-colors opacity-70 hover:opacity-100"
+                title="Transformar em Tarefa"
+              >
+                <ListTodo size={18} />
+              </button>
+            )}
             {!isNew && onDelete && (
               <button
                 onClick={() => { if (confirm('Excluir esta ideia?')) onDelete(idea!.id!); }}
@@ -702,6 +732,10 @@ export default function App() {
   const [isAreaDemandanteFilterOpen, setIsAreaDemandanteFilterOpen] = useState(false);
   const [isTableStatusFilterOpen, setIsTableStatusFilterOpen] = useState(false);
   const [isTableAreaDemandanteFilterOpen, setIsTableAreaDemandanteFilterOpen] = useState(false);
+  const statusFilterRef = useRef<HTMLDivElement>(null);
+  const areaDemandanteFilterRef = useRef<HTMLDivElement>(null);
+  const [consolidatedSortCol, setConsolidatedSortCol] = useState<'name' | 'status' | 'deadline' | 'requestingArea' | null>(null);
+  const [consolidatedSortDir, setConsolidatedSortDir] = useState<'asc' | 'desc'>('asc');
 
   // State for data from API
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -721,6 +755,7 @@ export default function App() {
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [editingIdea, setEditingIdea] = useState<Partial<Idea> | null>(null);
   const [isIdeaModalOpen, setIsIdeaModalOpen] = useState(false);
+  const [ideaPendingTaskCreationId, setIdeaPendingTaskCreationId] = useState<number | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [backupRunning, setBackupRunning] = useState<'full' | 'incremental' | null>(null);
 
@@ -753,6 +788,19 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusFilterRef.current && !statusFilterRef.current.contains(e.target as Node)) {
+        setIsStatusFilterOpen(false);
+      }
+      if (areaDemandanteFilterRef.current && !areaDemandanteFilterRef.current.contains(e.target as Node)) {
+        setIsAreaDemandanteFilterOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -804,7 +852,14 @@ export default function App() {
       if (response.ok) {
         setIsModalOpen(false);
         fetchData();
+        if (ideaPendingTaskCreationId) {
+          handleDeleteIdea(ideaPendingTaskCreationId);
+          setIdeaPendingTaskCreationId(null);
+        }
         addToast(isNew ? 'Tarefa criada com sucesso' : 'Tarefa atualizada com sucesso');
+      } else {
+        const data = await response.json().catch(() => ({}));
+        addToast(data.error || 'Erro ao salvar tarefa', 'error');
       }
     } catch (error) {
       console.error('Erro ao salvar tarefa:', error);
@@ -1001,6 +1056,23 @@ export default function App() {
     } catch { addToast('Erro ao excluir ideia', 'error'); }
   };
 
+  const handleTurnIdeaIntoTask = (idea: Idea) => {
+    setIsIdeaModalOpen(false);
+    setIdeaPendingTaskCreationId(idea.id);
+    setSelectedTask({
+      name: idea.title,
+      description: idea.content || '',
+      system: idea.relatedSystem || '',
+      type: 'Melhoria',
+      status: 'TBD',
+      criticality: 'Média',
+      area: '',
+      requester: '',
+      requestingArea: ''
+    } as unknown as Task);
+    setIsModalOpen(true);
+  };
+
   const exportToCSV = () => {
     const headers = ['#', 'Nome', 'Área', 'Sistema', 'Status', 'Criticidade', 'Prazo', 'Solicitante', 'Área Demandante', 'Última Atualização'];
     const rows = filteredTasks.map((t, i) => [
@@ -1025,7 +1097,7 @@ export default function App() {
   const renderPainel = () => {
     const activeTasks = tasks.filter(t => !t.status?.toLowerCase().includes('concluí') && !t.status?.toLowerCase().includes('done'));
     const doneTasks = tasks.filter(t => t.status?.toLowerCase().includes('concluí') || t.status?.toLowerCase().includes('done'));
-    const dueToday = activeTasks.filter(t => t.deadline === format(new Date(), 'yyyy-MM-dd')).length;
+    const dueToday = activeTasks.filter(t => t.deadline?.startsWith(format(new Date(), 'yyyy-MM-dd'))).length;
     
     // Mock for projects (using systems as projects)
     const activeProjects = stats?.systems?.filter(s => s.inProgressCount > 0) || [];
@@ -1513,26 +1585,42 @@ export default function App() {
           )}>
             <table className="w-full text-left">
               <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+                {(() => {
+                  const handleSort = (col: 'name' | 'status' | 'deadline' | 'requestingArea') => {
+                    if (consolidatedSortCol === col) {
+                      setConsolidatedSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setConsolidatedSortCol(col);
+                      setConsolidatedSortDir('asc');
+                    }
+                  };
+                  const SortIcon = ({ col }: { col: 'name' | 'status' | 'deadline' | 'requestingArea' }) => {
+                    if (consolidatedSortCol !== col) return <ArrowUpDown size={11} className="text-slate-300 group-hover:text-slate-500 transition-colors" />;
+                    return consolidatedSortDir === 'asc'
+                      ? <ArrowUp size={11} className="text-brand-red" />
+                      : <ArrowDown size={11} className="text-brand-red" />;
+                  };
+                  return (
                 <tr className="border-b border-slate-100 dark:border-slate-800">
                   <th className="px-8 py-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <LayoutDashboard size={12} /> Atividade
-                    </div>
+                    <button onClick={() => handleSort('name')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
+                      <LayoutDashboard size={12} /> Atividade <SortIcon col="name" />
+                    </button>
                   </th>
                   <th className="px-8 py-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <CircleDot size={12} /> Status
-                    </div>
+                    <button onClick={() => handleSort('status')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
+                      <CircleDot size={12} /> Status <SortIcon col="status" />
+                    </button>
                   </th>
                   <th className="px-8 py-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <Calendar size={12} /> Prazo
-                    </div>
+                    <button onClick={() => handleSort('deadline')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
+                      <Calendar size={12} /> Prazo <SortIcon col="deadline" />
+                    </button>
                   </th>
                   <th className="px-8 py-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <Users size={12} /> Demandante
-                    </div>
+                    <button onClick={() => handleSort('requestingArea')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
+                      <Users size={12} /> Demandante <SortIcon col="requestingArea" />
+                    </button>
                   </th>
                   <th className="px-8 py-3">
                     <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1540,9 +1628,27 @@ export default function App() {
                     </div>
                   </th>
                 </tr>
+                  );
+                })()}
               </thead>
               <tbody>
-                {filteredTasks.map((task, idx) => {
+                {(consolidatedSortCol
+                  ? [...filteredTasks].sort((a, b) => {
+                      let valA: string | number = '';
+                      let valB: string | number = '';
+                      if (consolidatedSortCol === 'name') { valA = a.name?.toLowerCase() || ''; valB = b.name?.toLowerCase() || ''; }
+                      else if (consolidatedSortCol === 'status') { valA = a.status?.toLowerCase() || ''; valB = b.status?.toLowerCase() || ''; }
+                      else if (consolidatedSortCol === 'deadline') {
+                        valA = a.deadline ? new Date(a.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
+                        valB = b.deadline ? new Date(b.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
+                      }
+                      else if (consolidatedSortCol === 'requestingArea') { valA = a.requestingArea?.toLowerCase() || ''; valB = b.requestingArea?.toLowerCase() || ''; }
+                      if (valA < valB) return consolidatedSortDir === 'asc' ? -1 : 1;
+                      if (valA > valB) return consolidatedSortDir === 'asc' ? 1 : -1;
+                      return 0;
+                    })
+                  : filteredTasks
+                ).map((task, idx) => {
                   const rawStatus = task.status || '';
                   const sLabel = rawStatus;
                   const normalizedStatus = rawStatus.toLowerCase();
@@ -1803,8 +1909,20 @@ export default function App() {
             >
               <div className="flex items-start justify-between gap-3 mb-3">
                 <h3 className="font-black text-slate-800 dark:text-white line-clamp-2 group-hover:text-violet-600 transition-colors">{idea.title}</h3>
-                <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl text-violet-600 shrink-0">
-                  <NotebookPen size={16} />
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTurnIdeaIntoTask(idea);
+                    }}
+                    className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl text-violet-600 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors"
+                    title="Transformar em Tarefa"
+                  >
+                    <ListTodo size={16} />
+                  </button>
+                  <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl text-violet-600">
+                    <NotebookPen size={16} />
+                  </div>
                 </div>
               </div>
               {idea.content && (
@@ -2010,7 +2128,6 @@ export default function App() {
             { id: 'consolidated', icon: Layers,          label: 'Consolidado'   },
             { id: 'metrics',      icon: TrendingUp,      label: 'Métricas'      },
             { id: 'ideas',        icon: NotebookPen,     label: 'Anotações'     },
-            { id: 'ai-support',   icon: Sparkles,        label: 'IA Support'    },
             { id: 'settings',     icon: Settings,        label: 'Configurações' },
           ] as const).map(({ id, icon: Icon, label }) => (
             <button
@@ -2049,7 +2166,7 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             {/* Status Filter - Premium Multi-select */}
-            <div className="relative">
+            <div className="relative" ref={statusFilterRef}>
               <button
                 onClick={() => setIsStatusFilterOpen(!isStatusFilterOpen)}
                 className={cn(
@@ -2077,7 +2194,6 @@ export default function App() {
               <AnimatePresence>
                 {isStatusFilterOpen && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsStatusFilterOpen(false)} />
                     <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2134,7 +2250,7 @@ export default function App() {
             </div>
 
             {/* Área Demandante Filter - Premium Multi-select */}
-            <div className="relative">
+            <div className="relative" ref={areaDemandanteFilterRef}>
               <button
                 onClick={() => setIsAreaDemandanteFilterOpen(!isAreaDemandanteFilterOpen)}
                 className={cn(
@@ -2162,7 +2278,6 @@ export default function App() {
               <AnimatePresence>
                 {isAreaDemandanteFilterOpen && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setIsAreaDemandanteFilterOpen(false)} />
                     <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2248,12 +2363,12 @@ export default function App() {
                     onClick={() => {
                       setSelectedTask({
                         name: '',
-                        type: 'Inovação',
-                        area: stats?.areas[0]?.name || '',
-                        system: stats?.systems[0]?.name || '',
+                        type: stats?.taskTypes[0]?.name || '',
+                        area: stats?.areas[0]?.name || 'Nenhum',
+                        system: stats?.systems[0]?.name || 'Nenhum',
                         requester: '',
                         criticality: 'Média',
-                        status: 'TBD',
+                        status: stats?.taskStatuses[0]?.name || '',
                         deadline: format(new Date(), 'yyyy-MM-dd'),
                         description: '',
                         checklist: [],
@@ -2404,6 +2519,7 @@ export default function App() {
             onClose={() => setIsIdeaModalOpen(false)}
             onSave={handleSaveIdea}
             onDelete={handleDeleteIdea}
+            onTurnIntoTask={handleTurnIdeaIntoTask}
             tasks={tasks}
             systems={stats?.systems || []}
           />

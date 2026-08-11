@@ -1,5 +1,5 @@
 // --- DATABASE SAFETY LOCK ---
-// AVISO: NUNCA realize migrações que resultem em PREDA DE DADOS (reset) sem autorização.
+// AVISO: NUNCA realize migrações que resultem em PERDA DE DADOS (reset) sem autorização.
 // SEMPRE verifique se a mudança exige o comando 'migrate dev' com reset do SQLite.
 // ----------------------------
 
@@ -13,7 +13,7 @@ datasource db {
 }
 
 model Task {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   name           String
   type           String
   area           String
@@ -21,56 +21,48 @@ model Task {
   requester      String
   criticality    String
   status         String
-  deadline       String
-  requestDate    String
-  requestingArea String   @default("")
-  checklist      String   // Store as JSON string
+  deadline       DateTime? // nullable: nem toda tarefa tem prazo
+  requestDate    DateTime
+  requestingArea String    @default("")
+  checklist      String    // JSON string
   lastUpdate     String
-  updateHistory  String   @default("[]") // Store as JSON string [{date, text}]
+  updateHistory  String    @default("[]") // JSON string [{date, text}]
   description    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model Area {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique
-  taskCount       Int      @default(0)
-  inProgressCount Int      @default(0)
-  createdAt       DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 model System {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique
-  taskCount       Int      @default(0)
-  inProgressCount Int      @default(0)
-  createdAt       DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 model TaskType {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique
-  taskCount       Int      @default(0)
-  inProgressCount Int      @default(0)
-  createdAt       DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 model TaskStatus {
-  id              Int      @id @default(autoincrement())
-  name            String   @unique
-  taskCount       Int      @default(0)
-  inProgressCount Int      @default(0)
-  createdAt       DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }
 
 model Idea {
-  id              Int      @id @default(autoincrement())
-  title           String
-  content         String
-  reviewDate      String?
-  relatedTaskId   Int?
-  relatedSystem   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  title         String
+  content       String
+  reviewDate    String?
+  relatedTaskId Int?
+  relatedSystem String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

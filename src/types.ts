@@ -22,7 +22,7 @@ export interface Task {
   requester: string;
   criticality: Criticality;
   status: TaskStatus;
-  deadline: string;
+  deadline: string | null;
   requestDate: string;
   requestingArea: string;
   checklist: ChecklistItem[];
