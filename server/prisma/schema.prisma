@@ -16,12 +16,15 @@ model Task {
   id             Int       @id @default(autoincrement())
   name           String
   type           String
-  area           String
+  theme          String
   system         String
   requester      String
   criticality    String
   status         String
   deadline       DateTime? // nullable: nem toda tarefa tem prazo
+  deliveryId     Int?
+  initiativeId   Int?      // Atividade -> Iniciativa/Projeto (null = avulsa)
+  position       Float?    // para ordem no Kanban
   requestDate    DateTime
   requestingArea String    @default("")
   checklist      String    // JSON string
@@ -32,7 +35,7 @@ model Task {
   updatedAt      DateTime  @updatedAt
 }
 
-model Area {
+model Theme {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   createdAt DateTime @default(now())
@@ -65,4 +68,39 @@ model Idea {
   relatedSystem String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model Initiative {
+  id          Int          @id @default(autoincrement())
+  name        String
+  kind        String       @default("initiative") // "project" | "initiative"
+  parentId    Int?
+  parent      Initiative?  @relation("InitiativeHierarchy", fields: [parentId], references: [id])
+  children    Initiative[] @relation("InitiativeHierarchy")
+  description String       @default("")
+  theme       String?
+  system      String?
+  status      String       @default("planning") // planning, active, paused, completed
+  startDate   DateTime?
+  targetDate  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Delivery {
+  id           Int        @id @default(autoincrement())
+  name         String
+  initiativeId Int
+  status       String     @default("pending") // pending, in_progress, completed
+  startDate    DateTime?
+  targetDate   DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model BusinessArea {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  responsible String   @default("") // responsável pela área
+  createdAt   DateTime @default(now())
 }
