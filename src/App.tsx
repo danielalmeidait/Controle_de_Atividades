@@ -50,10 +50,14 @@ import {
 } from 'recharts';
 import { addBusinessDays, isAfter, isBefore, parseISO, format, formatDistanceToNow, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Task, Area, System, ChecklistItem, UpdateEntry, TaskTypeModel, TaskStatusModel, SystemStatus, Idea, BackupStatus } from './types';
+import { Task, Theme, System, ChecklistItem, UpdateEntry, TaskTypeModel, TaskStatusModel, SystemStatus, Idea, BackupStatus, Initiative, BusinessArea } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AISupportForm } from './components/AISupportForm';
+import { TaskSidePanel } from './components/TaskSidePanel';
+import { KanbanBoard } from './components/KanbanBoard';
+import { ProjectsView, InitiativesView, CascadeView } from './components/HierarchyViews';
+import { Briefcase, Target } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -142,13 +146,14 @@ interface TaskModalProps {
   onClose: () => void;
   onSave: (task: Partial<Task>) => void;
   onDelete: (id: number) => void;
-  areas: Area[];
+  themes: Theme[];
   systems: System[];
   taskTypes: TaskTypeModel[];
   taskStatuses: TaskStatusModel[];
+  initiatives: Initiative[];
 }
 
-const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, taskTypes, taskStatuses }: TaskModalProps) => {
+const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, themes, systems, taskTypes, taskStatuses, initiatives }: TaskModalProps) => {
   const [editedTask, setEditedTask] = useState<Partial<Task>>({});
   const [newUpdate, setNewUpdate] = useState('');
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
@@ -200,6 +205,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
     const payload: Partial<Task> = {
       ...editedTask,
       checklist: checklistItems,
+      initiativeId: editedTask.initiativeId ? Number(editedTask.initiativeId) : null,
     };
     if (newUpdate.trim()) {
       payload.lastUpdate = newUpdate.trim();
@@ -260,11 +266,11 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Área</label>
-                  <select name="area" value={editedTask.area || ''} onChange={handleChange}
+                  <label className="text-xs font-bold text-slate-500 uppercase">Tema</label>
+                  <select name="theme" value={editedTask.theme || ''} onChange={handleChange}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20">
                     <option value="Nenhum">Nenhum</option>
-                    {areas.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                    {themes.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -273,6 +279,23 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20">
                     <option value="Nenhum">Nenhum</option>
                     {systems.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Iniciativa / Projeto</label>
+                  <select name="initiativeId" value={editedTask.initiativeId ?? ''} onChange={handleChange}
+                    className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20">
+                    <option value="">Nenhuma (avulsa)</option>
+                    {initiatives.some(i => i.kind === 'project') && (
+                      <optgroup label="Projetos">
+                        {initiatives.filter(i => i.kind === 'project').map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                      </optgroup>
+                    )}
+                    {initiatives.some(i => i.kind === 'initiative') && (
+                      <optgroup label="Iniciativas">
+                        {initiatives.filter(i => i.kind === 'initiative').map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               </div>
@@ -310,7 +333,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">Área Demandante</label>
-                  <input name="requestingArea" value={editedTask.requestingArea || ''} onChange={handleChange}
+                  <input name="requestingArea" value={(editedTask as any).requestingArea || (editedTask as any).requestingTheme || ''} onChange={handleChange}
                     placeholder="Ex: Comercial, Financeiro..."
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
                 </div>
@@ -409,20 +432,20 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, areas, systems, ta
   );
 };
 
-const AreaModal = ({ area, isOpen, onClose, onSave }: { area: Partial<Area> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<Area>) => void }) => {
+const ThemeModal = ({ theme, isOpen, onClose, onSave }: { theme: Partial<Theme> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<Theme>) => void }) => {
   const [name, setName] = useState('');
-  useEffect(() => { if (area) setName(area.name || ''); else setName(''); }, [area, isOpen]);
+  useEffect(() => { if (theme) setName(theme.name || ''); else setName(''); }, [theme, isOpen]);
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden ring-1 ring-white/10">
         <div className="bg-brand-red p-6 text-white flex justify-between items-center">
-          <h2 className="text-xl font-bold uppercase tracking-tight">{area?.id ? 'Editar Área' : 'Nova Área'}</h2>
+          <h2 className="text-xl font-bold uppercase tracking-tight">{theme?.id ? 'Editar Tema' : 'Novo Tema'}</h2>
           <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={20} /></button>
         </div>
         <div className="p-8 space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome da Área</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome do Tema</label>
             <input
               autoFocus
               value={name}
@@ -433,7 +456,40 @@ const AreaModal = ({ area, isOpen, onClose, onSave }: { area: Partial<Area> | nu
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <button onClick={onClose} className="px-6 py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors uppercase text-xs tracking-widest">Cancelar</button>
-            <button onClick={() => onSave({ ...area, name })} className="px-8 py-3 bg-brand-red text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all">Salvar</button>
+            <button onClick={() => onSave({ ...theme, name })} className="px-8 py-3 bg-brand-red text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all">Salvar</button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const AreaModal = ({ area, isOpen, onClose, onSave }: { area: Partial<BusinessArea> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<BusinessArea>) => void }) => {
+  const [name, setName] = useState('');
+  const [responsible, setResponsible] = useState('');
+  useEffect(() => { if (area) { setName(area.name || ''); setResponsible(area.responsible || ''); } else { setName(''); setResponsible(''); } }, [area, isOpen]);
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden ring-1 ring-white/10">
+        <div className="bg-brand-red p-6 text-white flex justify-between items-center">
+          <h2 className="text-xl font-bold uppercase tracking-tight">{area?.id ? 'Editar Área' : 'Nova Área de Negócio'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={20} /></button>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome da Área</label>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Financeiro, Comercial, TI..."
+              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Responsável pela Área</label>
+            <input value={responsible} onChange={(e) => setResponsible(e.target.value)} placeholder="Ex: Gisele Souza"
+              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium" />
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <button onClick={onClose} className="px-6 py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors uppercase text-xs tracking-widest">Cancelar</button>
+            <button onClick={() => name.trim() && onSave({ ...area, name: name.trim(), responsible })} className="px-8 py-3 bg-brand-red text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all">Salvar</button>
           </div>
         </div>
       </motion.div>
@@ -704,13 +760,13 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, ta
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [activeTab, setActiveTab] = useState<'painel' | 'areas' | 'systems' | 'consolidated' | 'metrics' | 'ideas' | 'ai-support' | 'settings'>('painel');
+  const [activeTab, setActiveTab] = useState<'painel' | 'projects' | 'initiatives' | 'cascade' | 'themes' | 'systems' | 'consolidated' | 'kanban' | 'ideas' | 'ai-support' | 'settings'>('painel');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const [editingArea, setEditingArea] = useState<Partial<Area> | null>(null);
-  const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+  const [editingTheme, setEditingTheme] = useState<Partial<Theme> | null>(null);
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
 
   const [editingSystem, setEditingSystem] = useState<Partial<System> | null>(null);
   const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
@@ -724,23 +780,23 @@ export default function App() {
   const [hoveredTaskId, setHoveredTaskId] = useState<number | null>(null);
   const [isTableFullScreen, setIsTableFullScreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [areaFilter, setAreaFilter] = useState<string | null>(null);
+  const [themeFilter, setThemeFilter] = useState<string | null>(null);
   const [systemFilter, setSystemFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>(['WIP', 'TBD']);
-  const [requestingAreaFilter, setRequestingAreaFilter] = useState<string[]>([]);
+  const [requestingThemeFilter, setRequestingThemeFilter] = useState<string[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
-  const [isAreaDemandanteFilterOpen, setIsAreaDemandanteFilterOpen] = useState(false);
+  const [isThemeDemandanteFilterOpen, setIsThemeDemandanteFilterOpen] = useState(false);
   const [isTableStatusFilterOpen, setIsTableStatusFilterOpen] = useState(false);
-  const [isTableAreaDemandanteFilterOpen, setIsTableAreaDemandanteFilterOpen] = useState(false);
+  const [isTableThemeDemandanteFilterOpen, setIsTableThemeDemandanteFilterOpen] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement>(null);
-  const areaDemandanteFilterRef = useRef<HTMLDivElement>(null);
-  const [consolidatedSortCol, setConsolidatedSortCol] = useState<'name' | 'status' | 'deadline' | 'requestingArea' | null>(null);
+  const themeDemandanteFilterRef = useRef<HTMLDivElement>(null);
+  const [consolidatedSortCol, setConsolidatedSortCol] = useState<'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea' | null>(null);
   const [consolidatedSortDir, setConsolidatedSortDir] = useState<'asc' | 'desc'>('asc');
 
   // State for data from API
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stats, setStats] = useState<{
-    areas: Area[],
+    themes: Theme[],
     systems: System[],
     taskTypes: TaskTypeModel[],
     taskStatuses: TaskStatusModel[],
@@ -759,26 +815,38 @@ export default function App() {
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [backupRunning, setBackupRunning] = useState<'full' | 'incremental' | null>(null);
 
+  // Hierarquia (Projetos/Iniciativas) e Áreas de negócio
+  const [initiatives, setInitiatives] = useState<Initiative[]>([]);
+  const [businessAreas, setBusinessAreas] = useState<BusinessArea[]>([]);
+  const [editingArea, setEditingArea] = useState<Partial<BusinessArea> | null>(null);
+  const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [tasksRes, statsRes, sysStatusRes, ideasRes, backupRes] = await Promise.all([
+      const [tasksRes, statsRes, sysStatusRes, ideasRes, backupRes, initiativesRes, areasRes] = await Promise.all([
         fetch('/api/tasks'),
         fetch('/api/stats'),
         fetch('/api/system/status'),
         fetch('/api/ideas'),
-        fetch('/api/backup/status')
+        fetch('/api/backup/status'),
+        fetch('/api/initiatives'),
+        fetch('/api/business-areas')
       ]);
       const tasksData     = await tasksRes.json();
       const statsData     = await statsRes.json();
       const sysStatusData = await sysStatusRes.json();
       const ideasData     = await ideasRes.json();
       const backupData    = await backupRes.json();
+      const initiativesData = await initiativesRes.json();
+      const areasData       = await areasRes.json();
       setTasks(tasksData);
       setStats(statsData);
       setSystemStatus(sysStatusData);
       setIdeas(Array.isArray(ideasData) ? ideasData : []);
       if (!backupData.error) setBackupStatus(backupData);
+      setInitiatives(Array.isArray(initiativesData) ? initiativesData : []);
+      setBusinessAreas(Array.isArray(areasData) ? areasData : []);
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -795,8 +863,8 @@ export default function App() {
       if (statusFilterRef.current && !statusFilterRef.current.contains(e.target as Node)) {
         setIsStatusFilterOpen(false);
       }
-      if (areaDemandanteFilterRef.current && !areaDemandanteFilterRef.current.contains(e.target as Node)) {
-        setIsAreaDemandanteFilterOpen(false);
+      if (themeDemandanteFilterRef.current && !themeDemandanteFilterRef.current.contains(e.target as Node)) {
+        setIsThemeDemandanteFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -826,6 +894,75 @@ export default function App() {
 
   const dismissToast = (id: number) => setToasts(prev => prev.filter(t => t.id !== id));
 
+  // --- Iniciativas / Projetos ---
+  const createInitiative = async (data: Partial<Initiative>) => {
+    try {
+      const res = await fetch('/api/initiatives', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      addToast(data.kind === 'project' ? 'Projeto criado!' : 'Iniciativa criada!');
+      await fetchData();
+    } catch { addToast('Erro ao criar.', 'error'); }
+  };
+  const updateInitiative = async (id: number, data: Partial<Initiative>) => {
+    try {
+      const res = await fetch(`/api/initiatives/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (!res.ok) throw new Error();
+      addToast('Atualizado!');
+      await fetchData();
+    } catch { addToast('Erro ao atualizar.', 'error'); }
+  };
+  const deleteInitiative = async (id: number) => {
+    if (!confirm('Excluir? As atividades vinculadas ficam avulsas.')) return;
+    try {
+      const res = await fetch(`/api/initiatives/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      addToast('Excluído!');
+      await fetchData();
+    } catch { addToast('Erro ao excluir.', 'error'); }
+  };
+  const promoteInitiative = async (id: number) => {
+    try {
+      const res = await fetch(`/api/initiatives/${id}/promote`, { method: 'PATCH' });
+      if (!res.ok) throw new Error();
+      addToast('Iniciativa promovida a projeto!');
+      await fetchData();
+    } catch { addToast('Erro ao promover.', 'error'); }
+  };
+
+  // --- Áreas de negócio ---
+  const saveArea = async (data: Partial<BusinessArea>) => {
+    try {
+      const isEdit = !!data.id;
+      const res = await fetch(isEdit ? `/api/business-areas/${data.id}` : '/api/business-areas', {
+        method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: data.name, responsible: data.responsible ?? '' }),
+      });
+      if (!res.ok) throw new Error();
+      addToast(isEdit ? 'Área atualizada!' : 'Área criada!');
+      setIsAreaModalOpen(false); setEditingArea(null);
+      await fetchData();
+    } catch { addToast('Erro ao salvar área.', 'error'); }
+  };
+  const handleDeleteArea = async (id: number) => {
+    if (!confirm('Excluir área de negócio?')) return;
+    try {
+      const res = await fetch(`/api/business-areas/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      addToast('Área excluída!');
+      await fetchData();
+    } catch { addToast('Erro ao excluir área.', 'error'); }
+  };
+
+  const hierarchyActions = {
+    initiatives,
+    tasks,
+    onCreate: createInitiative,
+    onUpdate: updateInitiative,
+    onDelete: deleteInitiative,
+    onPromote: promoteInitiative,
+    onSelectTask: (t: Task) => { setSelectedTask(t); setIsModalOpen(true); },
+  };
+
   const getExpiringSoonCount = () => {
     const today = new Date();
     const targetDate = addBusinessDays(today, 3);
@@ -839,14 +976,22 @@ export default function App() {
 
   const handleSaveTask = async (taskData: Partial<Task>) => {
     try {
-      const isNew = !taskData.id;
-      const url = isNew ? '/api/tasks' : `/api/tasks/${taskData.id}`;
+      // Compatibilidade: normaliza requestingTheme -> requestingArea sem alterar banco
+      const normalizedData: any = { ...taskData };
+      if (normalizedData.requestingTheme && !normalizedData.requestingArea) {
+        normalizedData.requestingArea = normalizedData.requestingTheme;
+      }
+      // Remove campo legado para não enviar duplicado
+      if ('requestingTheme' in normalizedData) delete normalizedData.requestingTheme;
+
+      const isNew = !normalizedData.id;
+      const url = isNew ? '/api/tasks' : `/api/tasks/${normalizedData.id}`;
       const method = isNew ? 'POST' : 'PUT';
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(taskData)
+        body: JSON.stringify(normalizedData)
       });
 
       if (response.ok) {
@@ -881,32 +1026,32 @@ export default function App() {
     }
   };
 
-  const handleSaveArea = async (areaData: Partial<Area>) => {
-    if (!areaData.name) return;
+  const handleSaveTheme = async (themeData: Partial<Theme>) => {
+    if (!themeData.name) return;
     try {
-      const isNew = !areaData.id;
-      const url = isNew ? '/api/areas' : `/api/areas/${areaData.id}`;
+      const isNew = !themeData.id;
+      const url = isNew ? '/api/themes' : `/api/themes/${themeData.id}`;
       const method = isNew ? 'POST' : 'PUT';
 
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(areaData)
+        body: JSON.stringify(themeData)
       });
       if (response.ok) {
-        setIsAreaModalOpen(false);
+        setIsThemeModalOpen(false);
         fetchData();
-        addToast(isNew ? 'Área criada com sucesso' : 'Área atualizada com sucesso');
+        addToast(isNew ? 'Tema criado com sucesso' : 'Tema atualizado com sucesso');
       }
-    } catch (error) { console.error('Erro ao salvar área:', error); addToast('Erro ao salvar área', 'error'); }
+    } catch (error) { console.error('Erro ao salvar tema:', error); addToast('Erro ao salvar tema', 'error'); }
   };
 
-  const handleDeleteArea = async (id: number) => {
-    if (!confirm('Excluir esta área permanentemente?')) return;
+  const handleDeleteTheme = async (id: number) => {
+    if (!confirm('Excluir este tema permanentemente?')) return;
     try {
-      const response = await fetch(`/api/areas/${id}`, { method: 'DELETE' });
-      if (response.ok) { fetchData(); addToast('Área excluída com sucesso'); }
-    } catch (error) { console.error('Erro ao deletar área:', error); addToast('Erro ao excluir área', 'error'); }
+      const response = await fetch(`/api/themes/${id}`, { method: 'DELETE' });
+      if (response.ok) { fetchData(); addToast('Tema excluído com sucesso'); }
+    } catch (error) { console.error('Erro ao deletar tema:', error); addToast('Erro ao excluir tema', 'error'); }
   };
 
   const handleSaveSystem = async (systemData: Partial<System>) => {
@@ -993,17 +1138,18 @@ export default function App() {
     } catch (error) { console.error('Erro ao deletar status:', error); addToast('Erro ao excluir status', 'error'); }
   };
 
-  const filteredTasks = tasks.filter(t =>
-    (((t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.area || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredTasks = tasks.filter(t => {
+    const reqArea = (t as any).requestingArea || (t as any).requestingTheme || '';
+    return (((t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.theme || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.system || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.requestingArea || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      reqArea.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (t.requester || '').toLowerCase().includes(searchQuery.toLowerCase()))) &&
-    (!areaFilter || t.area === areaFilter) &&
+    (!themeFilter || t.theme === themeFilter) &&
     (!systemFilter || t.system === systemFilter) &&
     (statusFilter.length === 0 || statusFilter.includes(t.status)) &&
-    (requestingAreaFilter.length === 0 || requestingAreaFilter.includes(t.requestingArea || ''))
-  );
+    (requestingThemeFilter.length === 0 || requestingThemeFilter.includes(reqArea))
+  });
 
   const runBackup = async (type: 'full' | 'incremental') => {
     setBackupRunning(type);
@@ -1066,7 +1212,7 @@ export default function App() {
       type: 'Melhoria',
       status: 'TBD',
       criticality: 'Média',
-      area: '',
+      theme: '',
       requester: '',
       requestingArea: ''
     } as unknown as Task);
@@ -1074,11 +1220,11 @@ export default function App() {
   };
 
   const exportToCSV = () => {
-    const headers = ['#', 'Nome', 'Área', 'Sistema', 'Status', 'Criticidade', 'Prazo', 'Solicitante', 'Área Demandante', 'Última Atualização'];
+    const headers = ['#', 'Nome', 'Tema', 'Sistema', 'Status', 'Criticidade', 'Prazo', 'Solicitante', 'Área Demandante', 'Última Atualização'];
     const rows = filteredTasks.map((t, i) => [
-      i + 1, t.name, t.area, t.system, t.status, t.criticality,
+      i + 1, t.name, t.theme, t.system, t.status, t.criticality,
       t.deadline ? format(parseISO(t.deadline), 'dd/MM/yyyy') : '',
-      t.requester, t.requestingArea || '', t.lastUpdate || ''
+      t.requester, (t as any).requestingArea || (t as any).requestingTheme || '', t.lastUpdate || ''
     ]);
     const csv = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -1216,37 +1362,37 @@ export default function App() {
     );
   };
 
-  const renderAreas = () => (
+  const renderThemes = () => (
     <div className="space-y-8">
       <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg">
         <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Frentes de Trabalho</h1>
       </div>
 
       <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar snap-x">
-        {stats?.areas.map((area) => (
+        {stats?.themes.map((theme) => (
           <motion.div
-            key={area.name}
+            key={theme.name}
             whileHover={{ y: -5 }}
             onClick={() => {
-              setAreaFilter(areaFilter === area.name ? null : area.name);
+              setThemeFilter(themeFilter === theme.name ? null : theme.name);
               setSystemFilter(null);
             }}
             className={cn(
               "min-w-[180px] p-6 rounded-3xl shadow-xl flex flex-col items-center text-center snap-start cursor-pointer transition-all",
-              areaFilter === area.name
+              themeFilter === theme.name
                 ? "bg-brand-red/5 border-2 border-brand-red dark:bg-brand-red/10 dark:border-brand-red"
                 : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800"
             )}
           >
-            <h3 className="text-2xl font-bold dark:text-white mb-2">{area.name}</h3>
-            <span className="text-sm font-bold text-slate-400">{area.taskCount}</span>
+            <h3 className="text-2xl font-bold dark:text-white mb-2">{theme.name}</h3>
+            <span className="text-sm font-bold text-slate-400">{theme.taskCount}</span>
             <span className="text-[10px] font-bold text-slate-500 uppercase mt-1">
-              {area.inProgressCount} | Em andamento
+              {theme.inProgressCount} | Em andamento
             </span>
             <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-4 overflow-hidden">
               <div
                 className="h-full bg-brand-red"
-                style={{ width: `${area.taskCount > 0 ? (area.inProgressCount / area.taskCount) * 100 : 0}%` }}
+                style={{ width: `${theme.taskCount > 0 ? (theme.inProgressCount / theme.taskCount) * 100 : 0}%` }}
               />
             </div>
           </motion.div>
@@ -1280,7 +1426,7 @@ export default function App() {
                   <span className="font-mono text-slate-400 text-xs">#{task.id}</span>
                   <div className="flex flex-col flex-1 truncate">
                     <span className="font-bold dark:text-white truncate">{task.name}</span>
-                    <span className="text-[10px] text-slate-500 uppercase">{task.area} • {task.requester}</span>
+                    <span className="text-[10px] text-slate-500 uppercase">{task.theme} • {task.requester}</span>
                   </div>
                   <div className={cn(
                     "px-2 py-0.5 rounded text-[10px] font-bold uppercase hidden sm:block",
@@ -1333,7 +1479,7 @@ export default function App() {
             whileHover={{ y: -5 }}
             onClick={() => {
               setSystemFilter(systemFilter === system.name ? null : system.name);
-              setAreaFilter(null);
+              setThemeFilter(null);
             }}
             className={cn(
               "min-w-[180px] p-6 rounded-3xl shadow-xl flex flex-col items-center text-center snap-start cursor-pointer transition-all",
@@ -1495,25 +1641,25 @@ export default function App() {
               {/* Área Demandante Filter for Table */}
               <div className="relative">
                 <button
-                  onClick={() => setIsTableAreaDemandanteFilterOpen(!isTableAreaDemandanteFilterOpen)}
+                  onClick={() => setIsTableThemeDemandanteFilterOpen(!isTableThemeDemandanteFilterOpen)}
                   className={cn(
                     "flex items-center gap-2 px-3 h-9 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-brand-red transition-all group",
-                    requestingAreaFilter.length > 0 && "border-brand-red/30 bg-brand-red/[0.01]"
+                    requestingThemeFilter.length > 0 && "border-brand-red/30 bg-brand-red/[0.01]"
                   )}
                 >
-                  <LayoutDashboard size={12} className={cn(requestingAreaFilter.length > 0 ? "text-brand-red" : "text-slate-400")} />
+                  <LayoutDashboard size={12} className={cn(requestingThemeFilter.length > 0 ? "text-brand-red" : "text-slate-400")} />
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300">
-                    {requestingAreaFilter.length === 0 ? 'Demandante' :
-                      requestingAreaFilter.length === 1 ? requestingAreaFilter[0] :
-                        `${requestingAreaFilter.length} Selecionadas`}
+                    {requestingThemeFilter.length === 0 ? 'Demandante' :
+                      requestingThemeFilter.length === 1 ? requestingThemeFilter[0] :
+                        `${requestingThemeFilter.length} Selecionadas`}
                   </span>
-                  <ChevronRight size={12} className={cn("text-slate-300 transition-transform", isTableAreaDemandanteFilterOpen ? "rotate-90" : "rotate-0")} />
+                  <ChevronRight size={12} className={cn("text-slate-300 transition-transform", isTableThemeDemandanteFilterOpen ? "rotate-90" : "rotate-0")} />
                 </button>
 
                 <AnimatePresence>
-                  {isTableAreaDemandanteFilterOpen && (
+                  {isTableThemeDemandanteFilterOpen && (
                     <>
-                      <div className="fixed inset-0 z-[70]" onClick={() => setIsTableAreaDemandanteFilterOpen(false)} />
+                      <div className="fixed inset-0 z-[70]" onClick={() => setIsTableThemeDemandanteFilterOpen(false)} />
                       <motion.div
                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -1521,25 +1667,25 @@ export default function App() {
                         className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-[80] overflow-hidden"
                       >
                         <div className="p-4 border-b border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Área</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Tema Demandante</span>
                           <button
-                            onClick={() => setRequestingAreaFilter([])}
+                            onClick={() => setRequestingThemeFilter([])}
                             className="text-[10px] font-bold text-brand-red hover:bg-brand-red/10 px-2 py-1 rounded-lg transition-colors"
                           >
                             Limpar
                           </button>
                         </div>
                         <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar">
-                          {Array.from(new Set(tasks.map(t => t.requestingArea).filter(Boolean))).sort().map(areaName => {
-                            const isSelected = requestingAreaFilter.includes(areaName as string);
+                          {Array.from(new Set(tasks.map(t => ((t as any).requestingArea || (t as any).requestingTheme)).filter(Boolean))).sort().map(themeName => {
+                            const isSelected = requestingThemeFilter.includes(themeName as string);
                             return (
                               <button
-                                key={areaName as string}
+                                key={themeName as string}
                                 onClick={() => {
                                   const newFilter = isSelected
-                                    ? requestingAreaFilter.filter(x => x !== areaName)
-                                    : [...requestingAreaFilter, areaName as string];
-                                  setRequestingAreaFilter(newFilter);
+                                    ? requestingThemeFilter.filter(x => x !== themeName)
+                                    : [...requestingThemeFilter, themeName as string];
+                                  setRequestingThemeFilter(newFilter);
                                 }}
                                 className={cn(
                                   "w-full px-3 py-3 flex items-center justify-between rounded-xl transition-all mb-1",
@@ -1553,7 +1699,7 @@ export default function App() {
                                   )}>
                                     {isSelected && <Plus size={12} className="rotate-0" />}
                                   </div>
-                                  <span className="text-xs font-bold">{areaName}</span>
+                                  <span className="text-xs font-bold">{themeName}</span>
                                 </div>
                               </button>
                             );
@@ -1586,7 +1732,7 @@ export default function App() {
             <table className="w-full text-left">
               <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                 {(() => {
-                  const handleSort = (col: 'name' | 'status' | 'deadline' | 'requestingArea') => {
+                  const handleSort = (col: 'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea') => {
                     if (consolidatedSortCol === col) {
                       setConsolidatedSortDir(d => d === 'asc' ? 'desc' : 'asc');
                     } else {
@@ -1594,7 +1740,7 @@ export default function App() {
                       setConsolidatedSortDir('asc');
                     }
                   };
-                  const SortIcon = ({ col }: { col: 'name' | 'status' | 'deadline' | 'requestingArea' }) => {
+                  const SortIcon = ({ col }: { col: 'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea' }) => {
                     if (consolidatedSortCol !== col) return <ArrowUpDown size={11} className="text-slate-300 group-hover:text-slate-500 transition-colors" />;
                     return consolidatedSortDir === 'asc'
                       ? <ArrowUp size={11} className="text-brand-red" />
@@ -1642,7 +1788,7 @@ export default function App() {
                         valA = a.deadline ? new Date(a.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
                         valB = b.deadline ? new Date(b.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
                       }
-                      else if (consolidatedSortCol === 'requestingArea') { valA = a.requestingArea?.toLowerCase() || ''; valB = b.requestingArea?.toLowerCase() || ''; }
+                      else if (consolidatedSortCol === 'requestingTheme' || consolidatedSortCol === 'requestingArea') { valA = ((a as any).requestingArea || (a as any).requestingTheme || '').toLowerCase(); valB = ((b as any).requestingArea || (b as any).requestingTheme || '').toLowerCase(); }
                       if (valA < valB) return consolidatedSortDir === 'asc' ? -1 : 1;
                       if (valA > valB) return consolidatedSortDir === 'asc' ? 1 : -1;
                       return 0;
@@ -1668,7 +1814,7 @@ export default function App() {
                         <p className="text-sm font-bold text-slate-800 dark:text-white group-hover:text-brand-red transition-colors">
                           {idx + 1}. {task.name}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">{task.area} | {task.system}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{task.theme} | {task.system}</p>
                       </td>
 
                       {/* Status Icon */}
@@ -1693,7 +1839,7 @@ export default function App() {
                       {/* Área Demandante */}
                       <td className="px-8 py-5">
                         <span className="text-xs font-bold px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg">
-                          {task.requestingArea || 'N/A'}
+                          {(task as any).requestingArea || (task as any).requestingTheme || 'N/A'}
                         </span>
                       </td>
 
@@ -1763,7 +1909,7 @@ export default function App() {
     const TYPE_COLORS = ['#cc0000', '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6'];
 
     // Por área (top 6)
-    const areaData = (stats?.areas ?? [])
+    const themeData = (stats?.themes ?? [])
       .filter(a => a.taskCount > 0)
       .sort((a, b) => b.taskCount - a.taskCount)
       .slice(0, 6)
@@ -1839,9 +1985,9 @@ export default function App() {
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Tarefas por Área (Top 6)</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Tarefas por Tema (Top 6)</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={areaData} layout="vertical">
+            <BarChart data={themeData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis type="number" tick={{ fontSize: 10 }} />
               <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={80} />
@@ -1966,29 +2112,29 @@ export default function App() {
         <h1 className="text-4xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
           <Settings size={32} /> Configurações
         </h1>
-        <p className="text-xs text-white/70 font-bold uppercase mt-1 tracking-widest">Gerencie áreas, sistemas, tipos e status</p>
+        <p className="text-xs text-white/70 font-bold uppercase mt-1 tracking-widest">Gerencie temas, sistemas, tipos e status</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Áreas */}
+        {/* Temas */}
         <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Áreas</h2>
-            <button onClick={() => { setEditingArea(null); setIsAreaModalOpen(true); }}
+            <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Temas</h2>
+            <button onClick={() => { setEditingTheme(null); setIsThemeModalOpen(true); }}
               className="flex items-center gap-2 px-4 py-2 bg-brand-red text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-colors">
               <Plus size={14} /> Nova
             </button>
           </div>
           <div className="space-y-2">
-            {(stats?.areas || []).map(area => (
-              <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+            {(stats?.themes || []).map(theme => (
+              <div key={theme.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                 <div>
-                  <p className="text-sm font-bold dark:text-white">{area.name}</p>
-                  <p className="text-[10px] text-slate-400">{area.taskCount} tarefas</p>
+                  <p className="text-sm font-bold dark:text-white">{theme.name}</p>
+                  <p className="text-[10px] text-slate-400">{theme.taskCount} tarefas</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setEditingArea(area); setIsAreaModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
-                  <button onClick={() => handleDeleteArea(area.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                  <button onClick={() => { setEditingTheme(theme); setIsThemeModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
+                  <button onClick={() => handleDeleteTheme(theme.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
                 </div>
               </div>
             ))}
@@ -2069,6 +2215,32 @@ export default function App() {
             ))}
           </div>
         </div>
+
+        {/* Áreas de Negócio */}
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Áreas de Negócio</h2>
+            <button onClick={() => { setEditingArea(null); setIsAreaModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-red text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-colors">
+              <Plus size={14} /> Nova
+            </button>
+          </div>
+          <div className="space-y-2">
+            {businessAreas.map(area => (
+              <div key={area.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                <div>
+                  <p className="text-sm font-bold dark:text-white">{area.name}</p>
+                  <p className="text-[10px] text-slate-400">{area.responsible ? `Resp.: ${area.responsible}` : 'Sem responsável'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditingArea(area); setIsAreaModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
+                  <button onClick={() => handleDeleteArea(area.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+            {businessAreas.length === 0 && <p className="text-xs text-slate-400 italic p-2">Nenhuma área cadastrada.</p>}
+          </div>
+        </div>
       </div>
 
       {backupStatus && (
@@ -2122,11 +2294,14 @@ export default function App() {
 
         <nav className="flex-1 px-4 space-y-2 py-4 overflow-y-auto custom-scrollbar">
           {([
-            { id: 'painel',       icon: Home,           label: 'Painel'         },
-            { id: 'areas',        icon: LayoutDashboard, label: 'Frentes'       },
+            { id: 'painel',       icon: Home,            label: 'Painel'        },
+            { id: 'projects',     icon: Briefcase,       label: 'Projetos'      },
+            { id: 'initiatives',  icon: Lightbulb,       label: 'Iniciativas'   },
+            { id: 'cascade',      icon: Target,          label: 'Cascata'       },
+            { id: 'themes',        icon: LayoutDashboard, label: 'Frentes'       },
             { id: 'systems',      icon: Monitor,         label: 'Sistemas'      },
             { id: 'consolidated', icon: Layers,          label: 'Consolidado'   },
-            { id: 'metrics',      icon: TrendingUp,      label: 'Métricas'      },
+            { id: 'kanban',       icon: ListTodo,       label: 'Kanban'        },
             { id: 'ideas',        icon: NotebookPen,     label: 'Anotações'     },
             { id: 'settings',     icon: Settings,        label: 'Configurações' },
           ] as const).map(({ id, icon: Icon, label }) => (
@@ -2250,33 +2425,33 @@ export default function App() {
             </div>
 
             {/* Área Demandante Filter - Premium Multi-select */}
-            <div className="relative" ref={areaDemandanteFilterRef}>
+            <div className="relative" ref={themeDemandanteFilterRef}>
               <button
-                onClick={() => setIsAreaDemandanteFilterOpen(!isAreaDemandanteFilterOpen)}
+                onClick={() => setIsThemeDemandanteFilterOpen(!isThemeDemandanteFilterOpen)}
                 className={cn(
                   "flex items-center gap-2 px-4 h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:border-brand-red transition-all group",
-                  requestingAreaFilter.length > 0 && "border-brand-red/50 bg-brand-red/[0.02]"
+                  requestingThemeFilter.length > 0 && "border-brand-red/50 bg-brand-red/[0.02]"
                 )}
               >
                 <div className={cn(
                   "p-1.5 rounded-lg transition-colors",
-                  requestingAreaFilter.length > 0 ? "bg-brand-red text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-brand-red"
+                  requestingThemeFilter.length > 0 ? "bg-brand-red text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-brand-red"
                 )}>
                   <LayoutDashboard size={14} />
                 </div>
                 <div className="flex flex-col items-start leading-tight pr-2">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Área Demandante</span>
                   <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
-                    {requestingAreaFilter.length === 0 ? 'Todas' :
-                      requestingAreaFilter.length === 1 ? requestingAreaFilter[0] :
-                        `${requestingAreaFilter.length} Selecionadas`}
+                    {requestingThemeFilter.length === 0 ? 'Todas' :
+                      requestingThemeFilter.length === 1 ? requestingThemeFilter[0] :
+                        `${requestingThemeFilter.length} Selecionadas`}
                   </span>
                 </div>
-                <ChevronRight size={14} className={cn("text-slate-300 transition-transform", isAreaDemandanteFilterOpen ? "rotate-90" : "rotate-0")} />
+                <ChevronRight size={14} className={cn("text-slate-300 transition-transform", isThemeDemandanteFilterOpen ? "rotate-90" : "rotate-0")} />
               </button>
 
               <AnimatePresence>
-                {isAreaDemandanteFilterOpen && (
+                {isThemeDemandanteFilterOpen && (
                   <>
                     <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -2285,25 +2460,25 @@ export default function App() {
                       className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 overflow-hidden"
                     >
                       <div className="p-4 border-b border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opções de Área</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opções de Tema Demandante</span>
                         <button
-                          onClick={() => setRequestingAreaFilter([])}
+                          onClick={() => setRequestingThemeFilter([])}
                           className="text-[10px] font-bold text-brand-red hover:bg-brand-red/10 px-2 py-1 rounded-lg transition-colors"
                         >
                           Limpar
                         </button>
                       </div>
                       <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar">
-                        {Array.from(new Set(tasks.map(t => t.requestingArea).filter(Boolean))).sort().map(areaName => {
-                          const isSelected = requestingAreaFilter.includes(areaName as string);
+                        {Array.from(new Set(tasks.map(t => ((t as any).requestingArea || (t as any).requestingTheme)).filter(Boolean))).sort().map(themeName => {
+                          const isSelected = requestingThemeFilter.includes(themeName as string);
                           return (
                             <button
-                              key={areaName as string}
+                              key={themeName as string}
                               onClick={() => {
                                 const newFilter = isSelected
-                                  ? requestingAreaFilter.filter(x => x !== areaName)
-                                  : [...requestingAreaFilter, areaName as string];
-                                setRequestingAreaFilter(newFilter);
+                                  ? requestingThemeFilter.filter(x => x !== themeName)
+                                  : [...requestingThemeFilter, themeName as string];
+                                setRequestingThemeFilter(newFilter);
                               }}
                               className={cn(
                                 "w-full px-3 py-3 flex items-center justify-between rounded-xl transition-all mb-1",
@@ -2317,7 +2492,7 @@ export default function App() {
                                 )}>
                                   {isSelected && <Plus size={12} className="rotate-0" />}
                                 </div>
-                                <span className="text-xs font-bold">{areaName}</span>
+                                <span className="text-xs font-bold">{themeName}</span>
                               </div>
                             </button>
                           );
@@ -2345,56 +2520,29 @@ export default function App() {
               </div>
             </div>
 
-            {/* Expanding Nova Tarefa Button with Dropdown */}
-            <div className="relative group">
-              <button
-                className="flex items-center gap-0 group-hover:gap-3 px-0 group-hover:px-5 h-11 bg-brand-red text-white rounded-xl font-bold shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all duration-500 ease-in-out overflow-hidden w-11 group-hover:w-44"
-              >
-                <div className="flex items-center justify-center w-11 h-11 shrink-0">
-                  <Plus size={22} />
-                </div>
-                <span className="opacity-0 group-hover:opacity-100 whitespace-nowrap transition-opacity duration-300 text-sm">Nova</span>
-              </button>
-
-              {/* Dropdown Menu */}
-              <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50">
-                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden min-w-[160px]">
-                  <button
-                    onClick={() => {
-                      setSelectedTask({
-                        name: '',
-                        type: stats?.taskTypes[0]?.name || '',
-                        area: stats?.areas[0]?.name || 'Nenhum',
-                        system: stats?.systems[0]?.name || 'Nenhum',
-                        requester: '',
-                        criticality: 'Média',
-                        status: stats?.taskStatuses[0]?.name || '',
-                        deadline: format(new Date(), 'yyyy-MM-dd'),
-                        description: '',
-                        checklist: [],
-                        lastUpdate: 'Tarefa inicializada.'
-                      } as Task);
-                      setIsModalOpen(true);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-brand-red transition-colors flex items-center gap-2"
-                  >
-                    <Layers size={16} /> Tarefa
-                  </button>
-                  <button
-                    onClick={() => { setEditingArea(null); setIsAreaModalOpen(true); }}
-                    className="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-brand-red transition-colors flex items-center gap-2 border-t border-slate-50 dark:border-slate-800"
-                  >
-                    <LayoutDashboard size={16} /> Área
-                  </button>
-                  <button
-                    onClick={() => { setEditingSystem(null); setIsSystemModalOpen(true); }}
-                    className="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-brand-red transition-colors flex items-center gap-2 border-t border-slate-50 dark:border-slate-800"
-                  >
-                    <Monitor size={16} /> Sistema
-                  </button>
-                </div>
-              </div>
-            </div>
+            {/* Botão + Nova (simplificado: apenas Tarefa) */}
+            <button
+              onClick={() => {
+                setSelectedTask({
+                  name: '',
+                  type: stats?.taskTypes[0]?.name || '',
+                  theme: stats?.themes[0]?.name || 'Nenhum',
+                  system: stats?.systems[0]?.name || 'Nenhum',
+                  requester: '',
+                  criticality: 'Média',
+                  status: stats?.taskStatuses[0]?.name || '',
+                  deadline: format(new Date(), 'yyyy-MM-dd'),
+                  description: '',
+                  checklist: [],
+                  lastUpdate: 'Tarefa inicializada.'
+                } as Task);
+                setIsModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-5 h-11 bg-brand-red text-white rounded-xl font-bold shadow-lg shadow-red-500/20 hover:bg-red-700 transition-all duration-300 shrink-0"
+            >
+              <Plus size={18} />
+              <span className="text-sm whitespace-nowrap">Nova</span>
+            </button>
 
             <button className="p-2.5 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-brand-red transition-colors">
               <Calendar size={20} />
@@ -2459,10 +2607,21 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {activeTab === 'painel' && renderPainel()}
-            {activeTab === 'areas' && renderAreas()}
+            {activeTab === 'projects' && <ProjectsView {...hierarchyActions} />}
+            {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} />}
+            {activeTab === 'cascade' && <CascadeView {...hierarchyActions} />}
+            {activeTab === 'themes' && renderThemes()}
             {activeTab === 'systems' && renderSystems()}
             {activeTab === 'consolidated' && renderConsolidated()}
-            {activeTab === 'metrics' && renderMetrics()}
+            {activeTab === 'kanban' && (
+              <KanbanBoard
+                tasks={filteredTasks}
+                themes={stats?.themes || []}
+                systems={stats?.systems || []}
+                taskStatuses={stats?.taskStatuses || []}
+                onSelectTask={(t) => { setSelectedTask(t); setIsModalOpen(true); }}
+              />
+            )}
             {activeTab === 'ideas' && renderIdeas()}
             {activeTab === 'ai-support' && renderAISupport()}
             {activeTab === 'settings' && renderSettings()}
@@ -2471,23 +2630,26 @@ export default function App() {
         </div>
       </main>
 
-      <TaskModal
+      {/* TaskModal mantido como legado (não removido) — substituído por TaskSidePanel */}
+      {/* <TaskModal task={selectedTask} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSaveTask} onDelete={handleDeleteTask} themes={stats?.themes || []} systems={stats?.systems || []} taskTypes={stats?.taskTypes || []} taskStatuses={stats?.taskStatuses || []} /> */}
+      <TaskSidePanel
         task={selectedTask}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveTask}
         onDelete={handleDeleteTask}
-        areas={stats?.areas || []}
+        themes={stats?.themes || []}
         systems={stats?.systems || []}
         taskTypes={stats?.taskTypes || []}
         taskStatuses={stats?.taskStatuses || []}
+        initiatives={initiatives}
       />
 
-      <AreaModal
-        area={editingArea}
-        isOpen={isAreaModalOpen}
-        onClose={() => setIsAreaModalOpen(false)}
-        onSave={handleSaveArea}
+      <ThemeModal
+        theme={editingTheme}
+        isOpen={isThemeModalOpen}
+        onClose={() => setIsThemeModalOpen(false)}
+        onSave={handleSaveTheme}
       />
 
       <SystemModal
@@ -2495,6 +2657,13 @@ export default function App() {
         isOpen={isSystemModalOpen}
         onClose={() => setIsSystemModalOpen(false)}
         onSave={handleSaveSystem}
+      />
+
+      <AreaModal
+        area={editingArea}
+        isOpen={isAreaModalOpen}
+        onClose={() => { setIsAreaModalOpen(false); setEditingArea(null); }}
+        onSave={saveArea}
       />
 
       <TypeModal
