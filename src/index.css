@@ -8,6 +8,21 @@
 /* Enable class-based dark mode in Tailwind 4 */
 @variant dark (&:where(.dark, .dark *));
 
+/* Tema escuro: preto neutro (substitui a escala slate azulada por cinzas neutros).
+   Como o Tailwind v4 resolve as cores via variáveis CSS em uso, remapear a escala
+   dentro de .dark repinta todas as superfícies/bordas sem tocar no JSX. */
+.dark {
+  --color-slate-950: #0a0a0a; /* fundo do app */
+  --color-slate-900: #151515; /* cards / superfície primária */
+  --color-slate-800: #212121; /* superfície secundária / borda sutil */
+  --color-slate-700: #2c2c2c; /* bordas, inputs */
+  --color-slate-600: #3a3a3a; /* borda mais forte */
+  --color-slate-500: #8b8b8b; /* texto mutado / nav inativo */
+  --color-slate-400: #a1a1a1; /* texto mutado */
+  --color-slate-300: #c4c4c4; /* texto secundário */
+  --color-slate-200: #e2e2e2; /* texto quase claro */
+}
+
 @layer base {
   body {
     @apply bg-slate-50 text-slate-900 transition-colors duration-300;
