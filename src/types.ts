@@ -17,12 +17,15 @@ export interface Task {
   id: number;
   name: string;
   type: TaskType;
-  area: string;
+  theme: string;
   system: string;
   requester: string;
   criticality: Criticality;
   status: TaskStatus;
   deadline: string | null;
+  deliveryId?: number;
+  initiativeId?: number | null;
+  position?: number;
   requestDate: string;
   requestingArea: string;
   checklist: ChecklistItem[];
@@ -31,7 +34,7 @@ export interface Task {
   description: string;
 }
 
-export interface Area {
+export interface Theme {
   id: number;
   name: string;
   taskCount: number;
@@ -65,7 +68,7 @@ export interface RecentUpdate {
   status: string;
   lastUpdate: string;
   updatedAt: string;
-  area: string;
+  theme: string;
   requester: string;
 }
 
@@ -95,6 +98,41 @@ export interface Idea {
   reviewDate?: string;
   relatedTaskId?: number;
   relatedSystem?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type InitiativeKind = 'project' | 'initiative';
+
+export interface Initiative {
+  id: number;
+  name: string;
+  kind: InitiativeKind;      // 'project' = Projeto | 'initiative' = Iniciativa
+  parentId?: number | null;  // pai (Projeto) quando é uma iniciativa/feature; null = raiz
+  description?: string;
+  theme?: string;
+  system?: string;
+  status: string;
+  startDate?: string;
+  targetDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BusinessArea {
+  id: number;
+  name: string;
+  responsible: string;
+  createdAt?: string;
+}
+
+export interface Delivery {
+  id: number;
+  name: string;
+  initiativeId: number;
+  status: string;
+  startDate?: string;
+  targetDate?: string;
   createdAt: string;
   updatedAt: string;
 }
