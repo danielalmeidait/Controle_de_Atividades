@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Filter, LayoutDashboard, Monitor, X, Layers } from 'lucide-react';
-import { Task, Theme, System, TaskStatusModel } from '../types';
+import { Task, Theme, System, TaskStatusModel, Initiative, InitiativeKind } from '../types';
 import { TaskCard } from './TaskCard';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -34,10 +34,16 @@ interface KanbanBoardProps {
   themes: Theme[];
   systems: System[];
   taskStatuses: TaskStatusModel[];
+  initiatives: Initiative[];
   onSelectTask: (task: Task) => void;
 }
 
-export function KanbanBoard({ tasks, themes, systems, taskStatuses, onSelectTask }: KanbanBoardProps) {
+export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives, onSelectTask }: KanbanBoardProps) {
+  const kindById = useMemo(() => {
+    const m = new Map<number, InitiativeKind>();
+    for (const i of initiatives) m.set(i.id, i.kind);
+    return m;
+  }, [initiatives]);
   const [kanbanThemeFilter, setKanbanThemeFilter] = useState<string[]>([]);
   const [kanbanSystemFilter, setKanbanSystemFilter] = useState<string[]>([]);
   const [isThemeFilterOpen, setIsThemeFilterOpen] = useState(false);
@@ -230,7 +236,7 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, onSelectTask
                   ) : (
                     colTasks.map(task => (
                       <div key={task.id}>
-                        <TaskCard task={task} onClick={() => onSelectTask(task)} />
+                        <TaskCard task={task} onClick={() => onSelectTask(task)} kind={task.initiativeId != null ? kindById.get(task.initiativeId) ?? null : null} />
                       </div>
                     ))
                   )}

@@ -57,6 +57,8 @@ import { AISupportForm } from './components/AISupportForm';
 import { TaskSidePanel } from './components/TaskSidePanel';
 import { KanbanBoard } from './components/KanbanBoard';
 import { ProjectsView, InitiativesView, CascadeView } from './components/HierarchyViews';
+import { KindBadge } from './components/KindBadge';
+import { rollupTasks, rollupProject, activitiesOf, isDoneStatus } from './lib/rollup';
 import { Briefcase, Target } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
@@ -820,6 +822,7 @@ export default function App() {
   const [businessAreas, setBusinessAreas] = useState<BusinessArea[]>([]);
   const [editingArea, setEditingArea] = useState<Partial<BusinessArea> | null>(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+  const [painelSegment, setPainelSegment] = useState<'all' | 'projects' | 'initiatives'>('all');
 
   const fetchData = async () => {
     try {
@@ -1241,123 +1244,207 @@ export default function App() {
 
   
   const renderPainel = () => {
-    const activeTasks = tasks.filter(t => !t.status?.toLowerCase().includes('concluí') && !t.status?.toLowerCase().includes('done'));
-    const doneTasks = tasks.filter(t => t.status?.toLowerCase().includes('concluí') || t.status?.toLowerCase().includes('done'));
-    const dueToday = activeTasks.filter(t => t.deadline?.startsWith(format(new Date(), 'yyyy-MM-dd'))).length;
-    
-    // Mock for projects (using systems as projects)
-    const activeProjects = stats?.systems?.filter(s => s.inProgressCount > 0) || [];
-    const atRiskCount = activeProjects.length > 0 ? 1 : 0; // Mock risk
+    const projects = initiatives.filter(i => i.kind === 'project');
+    const standaloneInis = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
+    const activeProjects = projects.filter(p => p.status !== 'completed');
+    const activeInis = standaloneInis.filter(i => i.status !== 'completed');
+
+    const isWip = (s: string) => { const x = (s || '').toLowerCase(); return x.includes('andamento') || x.includes('wip') || x.includes('progress') || x.includes('fazendo'); };
+    const wipCount = tasks.filter(t => isWip(t.status)).length;
+    const today = startOfDay(new Date());
+    const overdue = tasks.filter(t => t.deadline && !isDoneStatus(t.status) && isBefore(parseISO(t.deadline), today));
+    const overallProg = rollupTasks(tasks);
+
+    const itemProg = (it: typeof initiatives[number]) =>
+      it.kind === 'project' ? rollupProject(it, initiatives, tasks) : rollupTasks(activitiesOf(it.id, tasks));
+
+    const segItems = painelSegment === 'projects' ? projects
+      : painelSegment === 'initiatives' ? standaloneInis
+      : [...projects, ...standaloneInis];
+
+    const groupBy = (key: (t: Task) => string | undefined) => {
+      const m: Record<string, { total: number; done: number }> = {};
+      for (const t of tasks) {
+        const k = (key(t) || '—').trim() || '—';
+        if (!m[k]) m[k] = { total: 0, done: 0 };
+        m[k].total++;
+        if (isDoneStatus(t.status)) m[k].done++;
+      }
+      return Object.entries(m).filter(([k]) => k !== '—' && k !== 'Nenhum').sort((a, b) => b[1].total - a[1].total).slice(0, 6);
+    };
+    const byFrente = groupBy(t => t.theme);
+    const bySistema = groupBy(t => t.system);
+    const byArea = groupBy(t => t.requestingArea);
+
+    const recent = systemStatus?.recentUpdates || [];
+    const stale = stats?.staleTasks || [];
+
+    const kpis = [
+      { label: 'Projetos ativos', value: activeProjects.length, sub: `${projects.length} no total`, color: 'text-brand-red', tab: 'projects' as const },
+      { label: 'Iniciativas em and.', value: activeInis.length, sub: `${standaloneInis.length} avulsas`, color: 'text-blue-500', tab: 'initiatives' as const },
+      { label: 'Atividades WIP', value: wipCount, sub: `${tasks.length} atividades`, color: 'text-amber-500', tab: 'kanban' as const },
+      { label: '% concluído', value: `${overallProg.pct}%`, sub: `${overallProg.done}/${overallProg.total} tarefas`, color: 'text-green-600', tab: 'cascade' as const },
+      { label: 'Atrasadas', value: overdue.length, sub: 'prazo vencido', color: overdue.length ? 'text-red-600' : 'text-slate-400', tab: 'consolidated' as const },
+    ];
+
+    const Corte = ({ title, rows }: { title: string; rows: [string, { total: number; done: number }][] }) => (
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">{title}</p>
+        <div className="space-y-3">
+          {rows.length === 0 && <p className="text-xs text-slate-400 italic">Sem dados.</p>}
+          {rows.map(([name, v]) => {
+            const pct = v.total ? Math.round((v.done / v.total) * 100) : 0;
+            return (
+              <div key={name}>
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{name}</span>
+                  <span className="text-[10px] font-black text-slate-400 tabular-nums shrink-0 ml-2">{v.done}/{v.total}</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand-red rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
 
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-end mb-6">
-          <h1 className="text-3xl font-black text-slate-800 dark:text-white">Painel operacional</h1>
-          <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
-            <Calendar size={16} />
+        <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg flex justify-between items-end">
+          <div>
+            <h1 className="text-4xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <LayoutDashboard size={32} /> Painel Executivo
+            </h1>
+            <p className="text-xs text-white/70 font-bold uppercase mt-1 tracking-widest">Acompanhamento de projetos e atividades</p>
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-xs font-bold text-white/80">
+            <Calendar size={14} />
             <span>Semana {format(new Date(), 'w')} · {format(new Date(), 'MMM yyyy', { locale: ptBR })}</span>
           </div>
         </div>
 
-        {/* Top Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-            <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">Tarefas ativas</p>
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{activeTasks.length}</h2>
-            <p className="text-xs font-bold text-slate-500">{dueToday} vencendo hoje</p>
+        {/* Segmentação */}
+        <div className="flex items-center gap-2">
+          {([
+            { id: 'all', label: 'Tudo' },
+            { id: 'projects', label: 'Projetos' },
+            { id: 'initiatives', label: 'Iniciativas avulsas' },
+          ] as const).map(seg => (
+            <button key={seg.id} onClick={() => setPainelSegment(seg.id)}
+              className={cn(
+                'px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all',
+                painelSegment === seg.id ? 'bg-brand-red text-white shadow-lg shadow-red-500/20' : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-800 hover:border-brand-red/30'
+              )}>
+              {seg.label}
+            </button>
+          ))}
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          {kpis.map(kpi => (
+            <button key={kpi.label} onClick={() => setActiveTab(kpi.tab)}
+              className="text-left bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 hover:border-brand-red/30 transition-colors">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{kpi.label}</p>
+              <p className={cn('text-4xl font-black mb-2', kpi.color)}>{kpi.value}</p>
+              <p className="text-xs font-bold text-slate-400">{kpi.sub}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* Progresso por projeto/iniciativa */}
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-black text-slate-800 dark:text-white">Progresso</h3>
+            <span className="text-xs font-bold text-slate-500">{segItems.length} item(ns)</span>
           </div>
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-            <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">Concluídas <span className="text-xs font-normal">(semana)</span></p>
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{doneTasks.length}</h2>
-            <p className="text-xs font-bold text-slate-500">+3 vs semana passada</p>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-            <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">Projetos em andamento</p>
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{activeProjects.length}</h2>
-            <p className="text-xs font-bold text-slate-500">{atRiskCount} em risco</p>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
-            <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-2">Anotações</p>
-            <h2 className="text-4xl font-black text-slate-800 dark:text-white mb-2">{ideas.length}</h2>
-            <p className="text-xs font-bold text-slate-500">3 sem categoria</p>
+          <div className="space-y-5">
+            {segItems.length === 0 && <p className="text-sm text-slate-400 italic">Nada para exibir neste filtro.</p>}
+            {segItems.map(it => {
+              const p = itemProg(it);
+              return (
+                <button key={`${it.kind}-${it.id}`} onClick={() => setActiveTab(it.kind === 'project' ? 'projects' : 'initiatives')}
+                  className="w-full text-left border-b border-slate-100 dark:border-slate-800 pb-4 last:border-0 last:pb-0 hover:opacity-80 transition-opacity">
+                  <div className="flex justify-between items-start mb-2 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <KindBadge kind={it.kind} size="xs" />
+                      <h4 className="font-bold text-slate-800 dark:text-white truncate">{it.name}</h4>
+                    </div>
+                    <span className="text-xs font-black text-slate-500 tabular-nums shrink-0">{p.pct}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className={cn('h-full rounded-full', it.kind === 'project' ? 'bg-brand-red' : 'bg-blue-500')} style={{ width: `${p.pct}%` }} />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* Tarefas Prioritárias */}
+        {/* Cortes */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Corte title="Por Frente" rows={byFrente} />
+          <Corte title="Por Sistema" rows={bySistema} />
+          <Corte title="Por Área de Negócio" rows={byArea} />
+        </div>
+
+        {/* Atrasadas + Atividade recente */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Tarefas prioritárias</h3>
-              <span className="bg-red-50 text-red-600 text-xs font-bold px-3 py-1 rounded-full">{activeTasks.filter(t=>t.criticality==='Alta').length} urgentes</span>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Atividades atrasadas</h3>
+              <span className={cn('text-xs font-black px-3 py-1 rounded-full', overdue.length ? 'bg-red-50 text-red-600 dark:bg-red-900/20' : 'bg-green-50 text-green-600 dark:bg-green-900/20')}>{overdue.length}</span>
             </div>
-            <div className="space-y-4">
-              {activeTasks.slice(0, 4).map(task => (
-                <div key={task.id} className="flex gap-4 border-b border-slate-100 dark:border-slate-800 pb-4 last:border-0 last:pb-0">
-                  <div className="mt-1">
-                    <div className="w-5 h-5 rounded border-2 border-slate-300 dark:border-slate-600 cursor-pointer hover:border-brand-red transition-colors"></div>
+            <div className="space-y-3">
+              {overdue.length === 0 && <p className="text-sm text-slate-400 italic">Nenhuma atividade atrasada. 🎉</p>}
+              {overdue.slice(0, 6).map(t => (
+                <button key={t.id} onClick={() => { setSelectedTask(t); setIsModalOpen(true); }}
+                  className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold dark:text-white truncate">{t.name}</p>
+                    <p className="text-[10px] text-slate-400">{t.system} · {t.status}</p>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white">{task.name}</h4>
-                    <p className="text-xs text-slate-500 mt-1">{task.system} · {task.deadline ? 'Vence ' + format(parseISO(task.deadline), 'dd/MM') : 'Sem prazo'}</p>
-                  </div>
-                </div>
+                  <span className="text-[10px] font-black text-red-500 shrink-0">{t.deadline ? format(parseISO(t.deadline), 'dd/MM') : ''}</span>
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Projetos */}
           <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-slate-800 dark:text-white">Projetos</h3>
-              <span className="text-xs font-bold text-slate-500">{activeProjects.length} ativos</span>
-            </div>
-            <div className="space-y-6">
-              {activeProjects.slice(0, 4).map((sys, idx) => {
-                const total = sys.taskCount;
-                const inProg = sys.inProgressCount;
-                const progress = total > 0 ? ((total - inProg) / total) * 100 : 0;
-                const isRisk = idx === 0; // Mock
-                
-                return (
-                  <div key={sys.id || sys.name} className="border-b border-slate-100 dark:border-slate-800 pb-4 last:border-0 last:pb-0">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-bold text-slate-800 dark:text-white">{sys.name}</h4>
-                        <p className="text-xs text-slate-500">{total} tarefas · {inProg} em andamento</p>
-                      </div>
-                      <span className={cn(
-                        "text-xs font-bold px-3 py-1 rounded-full",
-                        isRisk ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
-                      )}>
-                        {isRisk ? "Em risco" : "No prazo"}
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div 
-                        className={cn("h-full", isRisk ? "bg-brand-red" : "bg-violet-600")}
-                        style={{width: `${progress}%`}}
-                      />
-                    </div>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Atividade recente</h3>
+            <div className="space-y-3">
+              {recent.length === 0 && <p className="text-sm text-slate-400 italic">Sem atualizações recentes.</p>}
+              {recent.slice(0, 6).map(r => (
+                <div key={r.id} className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3 last:border-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold dark:text-white truncate">{r.name}</p>
+                    <p className="text-[10px] text-slate-400">{r.theme} · {r.requester}</p>
                   </div>
-                )
-              })}
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">{r.updatedAt ? formatDistanceToNow(new Date(r.updatedAt), { locale: ptBR, addSuffix: true }) : ''}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Anotações recentes */}
-        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 mt-6">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-6">Anotações recentes</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {ideas.slice(0, 3).map(idea => (
-              <div key={idea.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border-l-4 border-violet-500">
-                <h4 className="font-bold text-slate-800 dark:text-white text-sm line-clamp-2 mb-3">{idea.title}</h4>
-                <p className="text-xs text-slate-500">{idea.createdAt ? format(new Date(idea.createdAt), 'dd/MM') : 'Hoje'} · {idea.system || 'Geral'}</p>
-              </div>
-            ))}
+        {/* Alerta: atividades sem atualização (reaproveitado de Métricas) */}
+        {stale.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-6 rounded-3xl">
+            <h3 className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <AlertCircle size={16} /> Atividades sem atualização recente
+            </h3>
+            <div className="space-y-2">
+              {stale.map(t => (
+                <div key={t.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 rounded-xl">
+                  <span className="text-sm font-bold dark:text-white">#{t.id} {t.name}</span>
+                  <span className="text-xs text-amber-600 font-bold">{formatDistanceToNow(new Date(t.updatedAt), { locale: ptBR, addSuffix: true })}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-
+        )}
       </div>
     );
   };
@@ -1867,156 +1954,6 @@ export default function App() {
     );
   };
 
-  const renderMetrics = () => {
-    const isDoneStatus = (s: string) => s.toLowerCase().includes('concluí') || s.toLowerCase().includes('done') || s.toLowerCase().includes('fim');
-    const isWipStatus = (s: string) => s.toLowerCase().includes('andamento') || s.toLowerCase().includes('wip') || s.toLowerCase().includes('fazendo');
-
-    const totalTasks = tasks.length;
-    const doneTasks = tasks.filter(t => isDoneStatus(t.status)).length;
-    const wipTasks = tasks.filter(t => isWipStatus(t.status)).length;
-    const staleTasks = stats?.staleTasks ?? [];
-
-    // Últimos 6 meses
-    const months: string[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date();
-      d.setMonth(d.getMonth() - i);
-      months.push(format(d, 'MM/yy'));
-    }
-    const monthlyData = months.map(month => {
-      const criadas = tasks.filter(t => {
-        if (!t.requestDate) return false;
-        try { return format(parseISO(t.requestDate), 'MM/yy') === month; } catch { return false; }
-      }).length;
-      const concluidas = tasks.filter(t => {
-        if (!t.requestDate || !isDoneStatus(t.status)) return false;
-        try { return format(parseISO(t.requestDate), 'MM/yy') === month; } catch { return false; }
-      }).length;
-      return { mes: month, Criadas: criadas, Concluídas: concluidas };
-    });
-
-    // Por criticidade
-    const critData = [
-      { name: 'Alta', value: tasks.filter(t => t.criticality === 'Alta').length, color: '#dc2626' },
-      { name: 'Média', value: tasks.filter(t => t.criticality === 'Média').length, color: '#f59e0b' },
-      { name: 'Baixa', value: tasks.filter(t => t.criticality === 'Baixa').length, color: '#16a34a' },
-    ];
-
-    // Por tipo
-    const typeMap: Record<string, number> = {};
-    tasks.forEach(t => { if (t.type) typeMap[t.type] = (typeMap[t.type] || 0) + 1; });
-    const typeData = Object.entries(typeMap).map(([name, value]) => ({ name, value }));
-    const TYPE_COLORS = ['#cc0000', '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6'];
-
-    // Por área (top 6)
-    const themeData = (stats?.themes ?? [])
-      .filter(a => a.taskCount > 0)
-      .sort((a, b) => b.taskCount - a.taskCount)
-      .slice(0, 6)
-      .map(a => ({ name: a.name, Total: a.taskCount, 'Em Andamento': a.inProgressCount }));
-
-    // Idade média das tarefas abertas
-    const openTasks = tasks.filter(t => !isDoneStatus(t.status) && t.requestDate);
-    const avgAgeDays = openTasks.length > 0
-      ? Math.round(openTasks.reduce((sum, t) => {
-          try { return sum + (Date.now() - parseISO(t.requestDate).getTime()) / 86400000; } catch { return sum; }
-        }, 0) / openTasks.length)
-      : 0;
-
-    return (
-      <div className="space-y-8">
-        <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg">
-          <h1 className="text-4xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
-            <TrendingUp size={32} /> Métricas
-          </h1>
-          <p className="text-xs text-white/70 font-bold uppercase mt-1 tracking-widest">Visão analítica das atividades</p>
-        </div>
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Total de Tarefas', value: totalTasks, sub: `${wipTasks} em andamento`, color: 'text-brand-red' },
-            { label: 'Concluídas', value: doneTasks, sub: `${Math.round((doneTasks / (totalTasks || 1)) * 100)}% do total`, color: 'text-green-600' },
-            { label: 'Em Andamento', value: wipTasks, sub: `${totalTasks - doneTasks - wipTasks} pendentes`, color: 'text-amber-500' },
-            { label: 'Idade Média (dias)', value: avgAgeDays, sub: 'tarefas abertas', color: 'text-violet-600' },
-          ].map(kpi => (
-            <div key={kpi.label} className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{kpi.label}</p>
-              <p className={`text-4xl font-black ${kpi.color} mb-2`}>{kpi.value}</p>
-              <p className="text-xs font-bold text-slate-400">{kpi.sub}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Charts row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Criadas vs Concluídas (últimos 6 meses)</p>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="Criadas" fill="#cc0000" radius={[4,4,0,0]} />
-                <Bar dataKey="Concluídas" fill="#15803d" radius={[4,4,0,0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 flex flex-col items-center">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 self-start">Por Criticidade</p>
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie data={critData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} dataKey="value" paddingAngle={4}>
-                  {critData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-1 mt-2 text-[10px] font-bold uppercase self-start">
-              {critData.map(d => (
-                <div key={d.name} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{background: d.color}} />
-                  {d.name}: {d.value}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Tarefas por Tema (Top 6)</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={themeData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis type="number" tick={{ fontSize: 10 }} />
-              <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={80} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="Total" fill="#cc0000" radius={[0,4,4,0]} />
-              <Bar dataKey="Em Andamento" fill="#94a3b8" radius={[0,4,4,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {staleTasks.length > 0 && (
-          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-6 rounded-3xl">
-            <h3 className="text-sm font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <AlertCircle size={16} /> Atividades sem atualização recente
-            </h3>
-            <div className="space-y-2">
-              {staleTasks.map(t => (
-                <div key={t.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 rounded-xl">
-                  <span className="text-sm font-bold dark:text-white">#{t.id} {t.name}</span>
-                  <span className="text-xs text-amber-600 font-bold">{formatDistanceToNow(new Date(t.updatedAt), { locale: ptBR, addSuffix: true })}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderIdeas = () => (
     <div className="space-y-6">
@@ -2619,6 +2556,7 @@ export default function App() {
                 themes={stats?.themes || []}
                 systems={stats?.systems || []}
                 taskStatuses={stats?.taskStatuses || []}
+                initiatives={initiatives}
                 onSelectTask={(t) => { setSelectedTask(t); setIsModalOpen(true); }}
               />
             )}
