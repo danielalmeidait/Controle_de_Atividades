@@ -56,7 +56,7 @@ import { twMerge } from 'tailwind-merge';
 import { AISupportForm } from './components/AISupportForm';
 import { TaskSidePanel } from './components/TaskSidePanel';
 import { KanbanBoard } from './components/KanbanBoard';
-import { ProjectsView, InitiativesView, CascadeView } from './components/HierarchyViews';
+import { ProjectsView, InitiativesView, CascadeView, itemVisible } from './components/HierarchyViews';
 import { KindBadge } from './components/KindBadge';
 import { rollupTasks, rollupProject, activitiesOf, isDoneStatus } from './lib/rollup';
 import { Briefcase, Target } from 'lucide-react';
@@ -1141,18 +1141,28 @@ export default function App() {
     } catch (error) { console.error('Erro ao deletar status:', error); addToast('Erro ao excluir status', 'error'); }
   };
 
-  const filteredTasks = tasks.filter(t => {
+  const q = searchQuery.toLowerCase().trim();
+  const searchActive = q.length > 0;
+  const filtersActive = !!themeFilter || !!systemFilter || statusFilter.length > 0 || requestingThemeFilter.length > 0;
+
+  const taskMatchesSearch = (t: Task) => {
     const reqArea = (t as any).requestingArea || (t as any).requestingTheme || '';
-    return (((t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.theme || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.system || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reqArea.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.requester || '').toLowerCase().includes(searchQuery.toLowerCase()))) &&
-    (!themeFilter || t.theme === themeFilter) &&
-    (!systemFilter || t.system === systemFilter) &&
-    (statusFilter.length === 0 || statusFilter.includes(t.status)) &&
-    (requestingThemeFilter.length === 0 || requestingThemeFilter.includes(reqArea))
-  });
+    return !searchActive ||
+      (t.name || '').toLowerCase().includes(q) ||
+      (t.theme || '').toLowerCase().includes(q) ||
+      (t.system || '').toLowerCase().includes(q) ||
+      reqArea.toLowerCase().includes(q) ||
+      (t.requester || '').toLowerCase().includes(q);
+  };
+  const taskMatchesFilters = (t: Task) => {
+    const reqArea = (t as any).requestingArea || (t as any).requestingTheme || '';
+    return (!themeFilter || t.theme === themeFilter) &&
+      (!systemFilter || t.system === systemFilter) &&
+      (statusFilter.length === 0 || statusFilter.includes(t.status)) &&
+      (requestingThemeFilter.length === 0 || requestingThemeFilter.includes(reqArea));
+  };
+  const filteredTasks = tasks.filter(t => taskMatchesSearch(t) && taskMatchesFilters(t));
+  const filteredTaskIds = new Set<number>(filteredTasks.map(t => t.id));
 
   const runBackup = async (type: 'full' | 'incremental') => {
     setBackupRunning(type);
@@ -1250,8 +1260,6 @@ export default function App() {
     const activeProjects = projects.filter(p => p.status !== 'completed');
     const activeInis = allInis.filter(i => i.status !== 'completed');
 
-    const isWip = (s: string) => { const x = (s || '').toLowerCase(); return x.includes('andamento') || x.includes('wip') || x.includes('progress') || x.includes('fazendo'); };
-    const wipCount = tasks.filter(t => isWip(t.status)).length;
     const today = startOfDay(new Date());
     const overdue = tasks.filter(t => t.deadline && !isDoneStatus(t.status) && isBefore(parseISO(t.deadline), today));
     const overallProg = rollupTasks(tasks);
@@ -1259,9 +1267,11 @@ export default function App() {
     const itemProg = (it: typeof initiatives[number]) =>
       it.kind === 'project' ? rollupProject(it, initiatives, tasks) : rollupTasks(activitiesOf(it.id, tasks));
 
-    const segItems = painelSegment === 'projects' ? projects
+    const painelCtx = { query: searchQuery, filteredTaskIds, narrowing: searchActive || filtersActive };
+    const baseSeg = painelSegment === 'projects' ? projects
       : painelSegment === 'initiatives' ? standaloneInis
       : [...projects, ...standaloneInis];
+    const segItems = baseSeg.filter(it => itemVisible(it, initiatives, tasks, painelCtx));
 
     const groupBy = (key: (t: Task) => string | undefined) => {
       const m: Record<string, { total: number; done: number }> = {};
@@ -1283,7 +1293,6 @@ export default function App() {
     const kpis = [
       { label: 'Projetos ativos', value: activeProjects.length, sub: `${projects.length} no total`, color: 'text-brand-red', tab: 'projects' as const },
       { label: 'Iniciativas em and.', value: activeInis.length, sub: `${allInis.length} no total`, color: 'text-blue-500', tab: 'initiatives' as const },
-      { label: 'Atividades WIP', value: wipCount, sub: `${tasks.length} atividades`, color: 'text-amber-500', tab: 'kanban' as const },
       { label: '% concluído', value: `${overallProg.pct}%`, sub: `${overallProg.done}/${overallProg.total} tarefas`, color: 'text-green-600', tab: 'cascade' as const },
       { label: 'Atrasadas', value: overdue.length, sub: 'prazo vencido', color: overdue.length ? 'text-red-600' : 'text-slate-400', tab: 'consolidated' as const },
     ];
@@ -1344,7 +1353,7 @@ export default function App() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map(kpi => (
             <button key={kpi.label} onClick={() => setActiveTab(kpi.tab)}
               className="text-left bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 hover:border-brand-red/30 transition-colors">
@@ -1984,7 +1993,7 @@ export default function App() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {ideas.map(idea => (
+          {ideas.filter(idea => !searchActive || (idea.title || '').toLowerCase().includes(q) || (idea.content || '').toLowerCase().includes(q) || (idea.relatedSystem || '').toLowerCase().includes(q)).map(idea => (
             <motion.div
               key={idea.id}
               whileHover={{ y: -4 }}
@@ -2545,9 +2554,9 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {activeTab === 'painel' && renderPainel()}
-            {activeTab === 'projects' && <ProjectsView {...hierarchyActions} />}
-            {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} />}
-            {activeTab === 'cascade' && <CascadeView {...hierarchyActions} />}
+            {activeTab === 'projects' && <ProjectsView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
+            {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
+            {activeTab === 'cascade' && <CascadeView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
             {activeTab === 'themes' && renderThemes()}
             {activeTab === 'systems' && renderSystems()}
             {activeTab === 'consolidated' && renderConsolidated()}

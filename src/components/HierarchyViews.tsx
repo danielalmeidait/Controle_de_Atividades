@@ -17,6 +17,36 @@ export interface HierarchyActions {
   onDelete: (id: number) => Promise<void>;
   onPromote: (id: number) => Promise<void>;
   onSelectTask: (t: Task) => void;
+  // Contexto de busca/filtro (top bar). narrowing = há busca ou filtro ativo.
+  query?: string;
+  filteredTaskIds?: Set<number>;
+  narrowing?: boolean;
+}
+
+export interface FilterCtx { query?: string; filteredTaskIds?: Set<number>; narrowing?: boolean }
+
+// Um projeto/iniciativa é visível se: a busca casa com nome/descrição, OU sua subárvore
+// tem alguma atividade que passa na busca+filtros atuais. Sem busca/filtro, tudo aparece.
+export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: Task[], ctx: FilterCtx): boolean {
+  if (!ctx.narrowing) return true;
+  const q = (ctx.query || '').toLowerCase().trim();
+  const nameHit = !!q && (item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q));
+  let acts: Task[];
+  if (item.kind === 'project') {
+    const ids = [item.id, ...childrenOf(item.id, initiatives).map(c => c.id)];
+    acts = tasks.filter(t => t.initiativeId != null && ids.includes(t.initiativeId));
+  } else {
+    acts = activitiesOf(item.id, tasks);
+  }
+  const subtreeHit = !!ctx.filteredTaskIds && acts.some(t => ctx.filteredTaskIds!.has(t.id));
+  return nameHit || subtreeHit;
+}
+
+// Atividades a exibir sob um item: filtradas pela busca+filtros quando algo está ativo.
+function visibleActivities(initiativeId: number, tasks: Task[], ctx: FilterCtx): Task[] {
+  const acts = activitiesOf(initiativeId, tasks);
+  if (!ctx.narrowing || !ctx.filteredTaskIds) return acts;
+  return acts.filter(t => ctx.filteredTaskIds!.has(t.id));
 }
 
 const INITIATIVE_STATUS: { value: string; label: string }[] = [
@@ -98,9 +128,9 @@ function NewItemForm({ kind, parentId, onCreate, onCancel }: {
 }
 
 // Lista de atividades ligadas a uma iniciativa
-function ActivityList({ initiativeId, tasks, onSelectTask }: { initiativeId: number; tasks: Task[]; onSelectTask: (t: Task) => void }) {
-  const acts = activitiesOf(initiativeId, tasks);
-  if (acts.length === 0) return <p className="text-xs text-slate-400 italic px-1 py-2">Nenhuma atividade vinculada.</p>;
+function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId: number; tasks: Task[]; onSelectTask: (t: Task) => void; ctx: FilterCtx }) {
+  const acts = visibleActivities(initiativeId, tasks, ctx);
+  if (acts.length === 0) return <p className="text-xs text-slate-400 italic px-1 py-2">{ctx.narrowing ? 'Nenhuma atividade neste filtro.' : 'Nenhuma atividade vinculada.'}</p>;
   return (
     <div className="space-y-1.5">
       {acts.map(t => {
@@ -124,8 +154,9 @@ function ActivityList({ initiativeId, tasks, onSelectTask }: { initiativeId: num
 // =========================================================================
 // TELA: PROJETOS  (Projeto → Iniciativas → Atividades → checklist)
 // =========================================================================
-export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask }: HierarchyActions) {
-  const projects = initiatives.filter(i => i.kind === 'project');
+export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+  const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
   const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -179,7 +210,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                       {/* Atividades diretas do projeto */}
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Atividades do projeto</p>
-                        <ActivityList initiativeId={proj.id} tasks={tasks} onSelectTask={onSelectTask} />
+                        <ActivityList initiativeId={proj.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
                       </div>
 
                       {/* Iniciativas filhas */}
@@ -196,7 +227,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                               <button onClick={() => onDelete(k.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={13} /></button>
                             </div>
                           </div>
-                          <ActivityList initiativeId={k.id} tasks={tasks} onSelectTask={onSelectTask} />
+                          <ActivityList initiativeId={k.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
                         </div>
                       ))}
 
@@ -253,8 +284,9 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
 // =========================================================================
 // TELA: INICIATIVAS AVULSAS
 // =========================================================================
-export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask }: HierarchyActions) {
-  const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
+export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+  const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null && itemVisible(i, initiatives, tasks, ctx));
   const projects = initiatives.filter(i => i.kind === 'project');
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -308,7 +340,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                     className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20">
                     <div className="p-5 space-y-3">
-                      <ActivityList initiativeId={ini.id} tasks={tasks} onSelectTask={onSelectTask} />
+                      <ActivityList initiativeId={ini.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
                       {projects.length > 0 && (
                         movingId === ini.id ? (
                           <div className="flex items-center gap-2">
@@ -353,9 +385,10 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
 // =========================================================================
 // TELA: CASCATA (OKR) — árvore expansível com status/progresso por nível
 // =========================================================================
-export function CascadeView({ initiatives, tasks, onSelectTask }: HierarchyActions) {
-  const projects = initiatives.filter(i => i.kind === 'project');
-  const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
+export function CascadeView({ initiatives, tasks, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+  const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
+  const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null && itemVisible(i, initiatives, tasks, ctx));
 
   return (
     <div className="space-y-8">
@@ -364,12 +397,12 @@ export function CascadeView({ initiatives, tasks, onSelectTask }: HierarchyActio
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 p-4 md:p-6 space-y-1">
         {projects.map(p => (
           <Fragment key={`p-${p.id}`}>
-            <CascadeNode node={p} initiatives={initiatives} tasks={tasks} level={0} onSelectTask={onSelectTask} />
+            <CascadeNode node={p} initiatives={initiatives} tasks={tasks} level={0} onSelectTask={onSelectTask} ctx={ctx} />
           </Fragment>
         ))}
         {standalone.map(s => (
           <Fragment key={`s-${s.id}`}>
-            <CascadeNode node={s} initiatives={initiatives} tasks={tasks} level={0} onSelectTask={onSelectTask} />
+            <CascadeNode node={s} initiatives={initiatives} tasks={tasks} level={0} onSelectTask={onSelectTask} ctx={ctx} />
           </Fragment>
         ))}
         {projects.length === 0 && standalone.length === 0 && (
@@ -380,13 +413,13 @@ export function CascadeView({ initiatives, tasks, onSelectTask }: HierarchyActio
   );
 }
 
-function CascadeNode({ node, initiatives, tasks, level, onSelectTask }: {
-  node: Initiative; initiatives: Initiative[]; tasks: Task[]; level: number; onSelectTask: (t: Task) => void;
+function CascadeNode({ node, initiatives, tasks, level, onSelectTask, ctx }: {
+  node: Initiative; initiatives: Initiative[]; tasks: Task[]; level: number; onSelectTask: (t: Task) => void; ctx: FilterCtx;
 }) {
   const [open, setOpen] = useState(level === 0);
-  const kids = node.kind === 'project' ? childrenOf(node.id, initiatives) : [];
-  const acts = activitiesOf(node.id, tasks);
-  const prog = node.kind === 'project' ? rollupProject(node, initiatives, tasks) : rollupTasks(acts);
+  const kids = (node.kind === 'project' ? childrenOf(node.id, initiatives) : []).filter(k => itemVisible(k, initiatives, tasks, ctx));
+  const acts = visibleActivities(node.id, tasks, ctx);
+  const prog = node.kind === 'project' ? rollupProject(node, initiatives, tasks) : rollupTasks(activitiesOf(node.id, tasks));
   const hasChildren = kids.length > 0 || acts.length > 0;
 
   return (
@@ -404,7 +437,7 @@ function CascadeNode({ node, initiatives, tasks, level, onSelectTask }: {
         <div>
           {kids.map(k => (
             <Fragment key={`k-${k.id}`}>
-              <CascadeNode node={k} initiatives={initiatives} tasks={tasks} level={level + 1} onSelectTask={onSelectTask} />
+              <CascadeNode node={k} initiatives={initiatives} tasks={tasks} level={level + 1} onSelectTask={onSelectTask} ctx={ctx} />
             </Fragment>
           ))}
           {acts.map(t => (
