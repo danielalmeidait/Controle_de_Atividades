@@ -964,6 +964,17 @@ export default function App() {
     onDelete: deleteInitiative,
     onPromote: promoteInitiative,
     onSelectTask: (t: Task) => { setSelectedTask(t); setIsModalOpen(true); },
+    onAttachMany: async (ids: number[], projectId: number) => {
+      if (ids.length === 0) return;
+      try {
+        const res = await Promise.all(ids.map(id => fetch(`/api/initiatives/${id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parentId: projectId }),
+        })));
+        if (res.some(r => !r.ok)) throw new Error();
+        addToast(`${ids.length} iniciativa(s) atrelada(s)!`);
+        await fetchData();
+      } catch { addToast('Erro ao atrelar iniciativas.', 'error'); }
+    },
   };
 
   const getExpiringSoonCount = () => {

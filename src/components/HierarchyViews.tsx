@@ -17,6 +17,7 @@ export interface HierarchyActions {
   onDelete: (id: number) => Promise<void>;
   onPromote: (id: number) => Promise<void>;
   onSelectTask: (t: Task) => void;
+  onAttachMany?: (ids: number[], projectId: number) => Promise<void>;
   // Contexto de busca/filtro (top bar). narrowing = há busca ou filtro ativo.
   query?: string;
   filteredTaskIds?: Set<number>;
@@ -30,7 +31,9 @@ export interface FilterCtx { query?: string; filteredTaskIds?: Set<number>; narr
 export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: Task[], ctx: FilterCtx): boolean {
   if (!ctx.narrowing) return true;
   const q = (ctx.query || '').toLowerCase().trim();
-  const nameHit = !!q && (item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q));
+  const searchActive = q.length > 0;
+  const nameHit = searchActive && (item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q));
+  if (nameHit) return true;
   let acts: Task[];
   if (item.kind === 'project') {
     const ids = [item.id, ...childrenOf(item.id, initiatives).map(c => c.id)];
@@ -38,8 +41,11 @@ export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: 
   } else {
     acts = activitiesOf(item.id, tasks);
   }
-  const subtreeHit = !!ctx.filteredTaskIds && acts.some(t => ctx.filteredTaskIds!.has(t.id));
-  return nameHit || subtreeHit;
+  // Item sem atividades não pode ser filtrado por status/área de atividade:
+  // aparece sempre (a menos que haja busca por texto que não casou com o nome).
+  if (acts.length === 0) return !searchActive;
+  // Item com atividades: aparece se alguma passa na busca+filtros atuais.
+  return !!ctx.filteredTaskIds && acts.some(t => ctx.filteredTaskIds!.has(t.id));
 }
 
 // Atividades a exibir sob um item: filtradas pela busca+filtros quando algo está ativo.
@@ -154,14 +160,26 @@ function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId
 // =========================================================================
 // TELA: PROJETOS  (Projeto → Iniciativas → Atividades → checklist)
 // =========================================================================
-export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
+export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onAttachMany, query, filteredTaskIds, narrowing }: HierarchyActions) {
   const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
   const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
-  const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
+  const projectNameById = new Map(initiatives.filter(i => i.kind === 'project').map(p => [p.id, p.name]));
+  // Iniciativas que podem ser atreladas a um projeto: qualquer iniciativa que não esteja já nele.
+  const attachablePoolFor = (projId: number) => initiatives.filter(i => i.kind === 'initiative' && i.parentId !== projId);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [addingInitTo, setAddingInitTo] = useState<number | null>(null);
   const [attachTo, setAttachTo] = useState<number | null>(null);
+  const [attachIds, setAttachIds] = useState<number[]>([]);
+  const toggleAttach = (id: number) => setAttachIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const openAttach = (projId: number) => { setAttachIds([]); setAttachTo(projId); };
+  const closeAttach = () => { setAttachIds([]); setAttachTo(null); };
+  const confirmAttach = async (projId: number) => {
+    if (attachIds.length === 0) return;
+    if (onAttachMany) await onAttachMany(attachIds, projId);
+    else for (const id of attachIds) await onUpdate(id, { parentId: projId });
+    closeAttach();
+  };
 
   return (
     <div className="space-y-8">
@@ -235,27 +253,36 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                       {addingInitTo === proj.id ? (
                         <NewItemForm kind="initiative" parentId={proj.id} onCreate={onCreate} onCancel={() => setAddingInitTo(null)} />
                       ) : attachTo === proj.id ? (
-                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 flex items-center gap-2">
-                          <select id={`attach-${proj.id}`} defaultValue=""
-                            className="flex-1 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
-                            <option value="" disabled>Selecione uma iniciativa avulsa…</option>
-                            {standalone.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </select>
-                          <button onClick={() => {
-                            const el = document.getElementById(`attach-${proj.id}`) as HTMLSelectElement | null;
-                            const id = el && el.value ? Number(el.value) : null;
-                            if (id) onUpdate(id, { parentId: proj.id });
-                            setAttachTo(null);
-                          }} className="px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">Atrelar</button>
-                          <button onClick={() => setAttachTo(null)} className="px-3 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                        <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Atrelar iniciativas a este projeto</p>
+                          <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-1">
+                            {attachablePoolFor(proj.id).length === 0 && <p className="text-xs text-slate-400 italic">Nenhuma iniciativa disponível para atrelar.</p>}
+                            {attachablePoolFor(proj.id).map(i => {
+                              const checked = attachIds.includes(i.id);
+                              return (
+                                <label key={i.id} className={clsx('flex items-center gap-3 p-2 rounded-xl cursor-pointer', checked ? 'bg-brand-red/10' : 'hover:bg-slate-100 dark:hover:bg-slate-800')}>
+                                  <input type="checkbox" checked={checked} onChange={() => toggleAttach(i.id)} className="w-4 h-4 accent-brand-red" />
+                                  <span className="text-xs font-bold dark:text-white truncate flex-1">{i.name}</span>
+                                  {i.parentId != null && <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">em: {projectNameById.get(i.parentId) || '—'}</span>}
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={closeAttach} className="px-3 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                            <button onClick={() => confirmAttach(proj.id)} disabled={attachIds.length === 0}
+                              className="px-4 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700 disabled:opacity-40 transition-colors">
+                              Atrelar{attachIds.length > 0 ? ` (${attachIds.length})` : ''}
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
                           <button onClick={() => setAddingInitTo(proj.id)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
                             <Plus size={13} /> Nova iniciativa
                           </button>
-                          {standalone.length > 0 && (
-                            <button onClick={() => setAttachTo(proj.id)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                          {attachablePoolFor(proj.id).length > 0 && (
+                            <button onClick={() => openAttach(proj.id)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
                               <Link2 size={13} /> Atrelar iniciativa existente
                             </button>
                           )}
