@@ -84,7 +84,7 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives,
             <Layers size={22} className="text-brand-red" /> Kanban
           </h2>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            {filtered.length} tarefas • {columns.length} colunas • Filtros por Tema e Sistema
+            {filtered.length} atividades • {columns.length} colunas • Filtros por Tema e Sistema
           </p>
         </div>
 
@@ -231,7 +231,7 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives,
                 <AnimatePresence>
                   {colTasks.length === 0 ? (
                     <div className="py-12 text-center">
-                      <p className="text-xs text-slate-400 italic">Nenhuma tarefa</p>
+                      <p className="text-xs text-slate-400 italic">Nenhuma atividade</p>
                     </div>
                   ) : (
                     colTasks.map(task => (

@@ -353,6 +353,12 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                     </div>
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
+                    {projects.length > 0 && (
+                      <button onClick={() => setMovingId(movingId === ini.id ? null : ini.id)} title="Associar a um projeto existente"
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                        <Link2 size={14} /> Associar
+                      </button>
+                    )}
                     <button onClick={() => onPromote(ini.id)} title="Transformar em projeto"
                       className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-black uppercase text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
                       <ArrowUpCircle size={14} /> Virar projeto
@@ -361,6 +367,22 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                   </div>
                 </div>
                 <div className="mt-3"><ProgressBar p={prog} /></div>
+                {movingId === ini.id && projects.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <select id={`move-${ini.id}`} defaultValue=""
+                      className="flex-1 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
+                      <option value="" disabled>Associar ao projeto…</option>
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <button onClick={() => {
+                      const el = document.getElementById(`move-${ini.id}`) as HTMLSelectElement | null;
+                      const id = el && el.value ? Number(el.value) : null;
+                      if (id) onUpdate(ini.id, { parentId: id });
+                      setMovingId(null);
+                    }} className="px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">Associar</button>
+                    <button onClick={() => setMovingId(null)} className="px-3 py-2 text-xs font-bold text-slate-500">Cancelar</button>
+                  </div>
+                )}
               </div>
               <AnimatePresence>
                 {isOpen && (
@@ -368,28 +390,6 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                     className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20">
                     <div className="p-5 space-y-3">
                       <ActivityList initiativeId={ini.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
-                      {projects.length > 0 && (
-                        movingId === ini.id ? (
-                          <div className="flex items-center gap-2">
-                            <select id={`move-${ini.id}`} defaultValue=""
-                              className="flex-1 p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
-                              <option value="" disabled>Mover para o projeto…</option>
-                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
-                            <button onClick={() => {
-                              const el = document.getElementById(`move-${ini.id}`) as HTMLSelectElement | null;
-                              const id = el && el.value ? Number(el.value) : null;
-                              if (id) onUpdate(ini.id, { parentId: id });
-                              setMovingId(null);
-                            }} className="px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">Mover</button>
-                            <button onClick={() => setMovingId(null)} className="px-3 py-2 text-xs font-bold text-slate-500">Cancelar</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setMovingId(ini.id)} className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-                            <Link2 size={13} /> Mover para um projeto
-                          </button>
-                        )
-                      )}
                     </div>
                   </motion.div>
                 )}
@@ -419,7 +419,7 @@ export function CascadeView({ initiatives, tasks, onSelectTask, query, filteredT
 
   return (
     <div className="space-y-8">
-      <Header icon={Target} title="Cascata (OKR)" subtitle="Abra a estrutura até o checklist de cada tarefa" />
+      <Header icon={Target} title="Cascata (OKR)" subtitle="Abra a estrutura até o checklist de cada atividade" />
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 p-4 md:p-6 space-y-1">
         {projects.map(p => (

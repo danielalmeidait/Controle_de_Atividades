@@ -57,10 +57,10 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
   };
 
   const handleSave = () => {
-    if (!editedTask.name?.trim()) return alert('Nome da tarefa é obrigatório.');
+    if (!editedTask.name?.trim()) return alert('Nome da atividade é obrigatório.');
     if (!editedTask.requester?.trim()) return alert('Solicitante é obrigatório.');
-    if (!editedTask.type) return alert('Tipo da tarefa é obrigatório.');
-    if (!editedTask.status) return alert('Status da tarefa é obrigatório.');
+    if (!editedTask.type) return alert('Tipo da atividade é obrigatório.');
+    if (!editedTask.status) return alert('Status da atividade é obrigatório.');
     
     const payload: Partial<Task> = {
       ...editedTask,
@@ -113,7 +113,7 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
                     name="name"
                     value={editedTask.name || ''}
                     onChange={handleChange}
-                    placeholder="Nome da Tarefa..."
+                    placeholder="Nome da Atividade..."
                     className="w-full text-lg font-bold bg-transparent border-none focus:ring-0 p-0 text-slate-800 dark:text-white placeholder:text-slate-300"
                   />
                   <div className="flex items-center gap-2 mt-1">
@@ -255,7 +255,7 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
               <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900">
                 <button onClick={() => toggleSection('checklist')} className="w-full flex items-center justify-between p-3 bg-slate-50/50 dark:bg-slate-800/30 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Checklist de Subtarefas</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">Checklist de Tarefas</span>
                     <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 text-[10px] font-bold">
                       {checklistItems.filter(i => i.done).length}/{checklistItems.length}
                     </span>
@@ -278,7 +278,7 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
                               type="text"
                               value={item.text}
                               onChange={e => handleChecklistChange(i, 'text', e.target.value)}
-                              placeholder="Descreva a subtarefa..."
+                              placeholder="Descreva a tarefa..."
                               className={cn("flex-1 bg-transparent text-sm outline-none dark:text-white border-b border-transparent focus:border-violet-500/30 transition-colors", item.done && "line-through text-slate-400")}
                             />
                             <button onClick={() => removeChecklistItem(i)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all shrink-0">

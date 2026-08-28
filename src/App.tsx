@@ -189,7 +189,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, themes, systems, t
 
   const handleSave = () => {
     if (!editedTask.name?.trim()) {
-      alert('Nome da tarefa é obrigatório.');
+      alert('Nome da atividade é obrigatório.');
       return;
     }
     if (!editedTask.requester?.trim()) {
@@ -197,11 +197,11 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, themes, systems, t
       return;
     }
     if (!editedTask.type) {
-      alert('Tipo da tarefa é obrigatório. Selecione um tipo.');
+      alert('Tipo da atividade é obrigatório. Selecione um tipo.');
       return;
     }
     if (!editedTask.status) {
-      alert('Status da tarefa é obrigatório. Selecione um status.');
+      alert('Status da atividade é obrigatório. Selecione um status.');
       return;
     }
     const payload: Partial<Task> = {
@@ -235,7 +235,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, themes, systems, t
             className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
           >
             <div className="bg-brand-red p-6 text-white flex justify-between items-center">
-              <h2 className="text-xl font-bold">{task.id ? 'Editar Tarefa' : 'Nova Tarefa'}</h2>
+              <h2 className="text-xl font-bold">{task.id ? 'Editar Atividade' : 'Nova Atividade'}</h2>
               <div className="flex items-center gap-2">
                 {task.id && (
                   <button
@@ -255,7 +255,7 @@ const TaskModal = ({ task, isOpen, onClose, onSave, onDelete, themes, systems, t
               {/* Left column */}
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Nome da Tarefa <span className="text-brand-red">*</span></label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Nome da Atividade <span className="text-brand-red">*</span></label>
                   <input name="name" value={editedTask.name || ''} onChange={handleChange}
                     className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
                 </div>
@@ -648,7 +648,7 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, ta
               <button
                 onClick={() => onTurnIntoTask(idea as Idea)}
                 className="p-2 hover:bg-white/20 rounded-full transition-colors opacity-70 hover:opacity-100"
-                title="Transformar em Tarefa"
+                title="Transformar em Atividade"
               >
                 <ListTodo size={18} />
               </button>
@@ -719,7 +719,7 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, ta
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-              <Link2 size={10} /> Tarefa relacionada
+              <Link2 size={10} /> Atividade relacionada
             </label>
             <select
               value={relatedTaskId}
@@ -1015,14 +1015,14 @@ export default function App() {
           handleDeleteIdea(ideaPendingTaskCreationId);
           setIdeaPendingTaskCreationId(null);
         }
-        addToast(isNew ? 'Tarefa criada com sucesso' : 'Tarefa atualizada com sucesso');
+        addToast(isNew ? 'Atividade criada com sucesso' : 'Atividade atualizada com sucesso');
       } else {
         const data = await response.json().catch(() => ({}));
-        addToast(data.error || 'Erro ao salvar tarefa', 'error');
+        addToast(data.error || 'Erro ao salvar atividade', 'error');
       }
     } catch (error) {
-      console.error('Erro ao salvar tarefa:', error);
-      addToast('Erro ao salvar tarefa', 'error');
+      console.error('Erro ao salvar atividade:', error);
+      addToast('Erro ao salvar atividade', 'error');
     }
   };
 
@@ -1032,11 +1032,11 @@ export default function App() {
       if (response.ok) {
         setIsModalOpen(false);
         fetchData();
-        addToast('Tarefa excluída com sucesso');
+        addToast('Atividade excluída com sucesso');
       }
     } catch (error) {
-      console.error('Erro ao deletar tarefa:', error);
-      addToast('Erro ao excluir tarefa', 'error');
+      console.error('Erro ao deletar atividade:', error);
+      addToast('Erro ao excluir atividade', 'error');
     }
   };
 
@@ -2020,7 +2020,7 @@ export default function App() {
                       handleTurnIdeaIntoTask(idea);
                     }}
                     className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-xl text-violet-600 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors"
-                    title="Transformar em Tarefa"
+                    title="Transformar em Atividade"
                   >
                     <ListTodo size={16} />
                   </button>
@@ -2088,7 +2088,7 @@ export default function App() {
               <div key={theme.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                 <div>
                   <p className="text-sm font-bold dark:text-white">{theme.name}</p>
-                  <p className="text-[10px] text-slate-400">{theme.taskCount} tarefas</p>
+                  <p className="text-[10px] text-slate-400">{theme.taskCount} atividades</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingTheme(theme); setIsThemeModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
@@ -2113,7 +2113,7 @@ export default function App() {
               <div key={system.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                 <div>
                   <p className="text-sm font-bold dark:text-white">{system.name}</p>
-                  <p className="text-[10px] text-slate-400">{system.taskCount} tarefas</p>
+                  <p className="text-[10px] text-slate-400">{system.taskCount} atividades</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingSystem(system); setIsSystemModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
@@ -2138,7 +2138,7 @@ export default function App() {
               <div key={type.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                 <div>
                   <p className="text-sm font-bold dark:text-white">{type.name}</p>
-                  <p className="text-[10px] text-slate-400">{type.taskCount} tarefas</p>
+                  <p className="text-[10px] text-slate-400">{type.taskCount} atividades</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingType(type); setIsTypeModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
@@ -2163,7 +2163,7 @@ export default function App() {
               <div key={status.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
                 <div>
                   <p className="text-sm font-bold dark:text-white">{status.name}</p>
-                  <p className="text-[10px] text-slate-400">{status.taskCount} tarefas</p>
+                  <p className="text-[10px] text-slate-400">{status.taskCount} atividades</p>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => { setEditingStatus(status); setIsStatusModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
@@ -2478,7 +2478,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Botão + Nova (simplificado: apenas Tarefa) */}
+            {/* Botão + Nova (simplificado: apenas Atividade) */}
             <button
               onClick={() => {
                 setSelectedTask({
@@ -2492,7 +2492,7 @@ export default function App() {
                   deadline: format(new Date(), 'yyyy-MM-dd'),
                   description: '',
                   checklist: [],
-                  lastUpdate: 'Tarefa inicializada.'
+                  lastUpdate: 'Atividade inicializada.'
                 } as Task);
                 setIsModalOpen(true);
               }}
@@ -2554,7 +2554,7 @@ export default function App() {
                         ['Projeto', 'Épico', 'Objetivo grande — meses'],
                         ['Iniciativa', 'Feature', 'Entrega de valor — semanas'],
                         ['Atividade', 'User Story', 'Item que fica pronto (checklist)'],
-                        ['Tarefa', 'Task', 'Passo / subtarefa'],
+                        ['Tarefa', 'Task', 'Item do checklist'],
                       ] as const).map(([pt, scrum, desc]) => (
                         <div key={pt}>
                           <div className="flex items-baseline justify-between gap-2">
