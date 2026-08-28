@@ -2518,7 +2518,7 @@ export default function App() {
               </div>
               
               {/* Tooltip Tecnologias */}
-              <div className="absolute right-0 top-full mt-3 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 p-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right scale-95 group-hover:scale-100">
+              <div className="absolute right-0 top-full mt-3 w-72 max-h-[80vh] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 p-5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right scale-95 group-hover:scale-100">
                 <div className="text-[10px] font-black text-brand-red uppercase tracking-widest mb-4 flex items-center gap-2">
                   <Monitor size={14} /> Stack Tecnológico
                 </div>
@@ -2543,8 +2543,31 @@ export default function App() {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Estilização</span>
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Tailwind CSS + Lucide</p>
                   </div>
-                  
-                  <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800">
+
+                  {/* Hierarquia x Scrum */}
+                  <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
+                    <div className="text-[10px] font-black text-brand-red uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Layers size={14} /> Hierarquia · equivalente Scrum
+                    </div>
+                    <div className="space-y-2.5">
+                      {([
+                        ['Projeto', 'Épico', 'Objetivo grande — meses'],
+                        ['Iniciativa', 'Feature', 'Entrega de valor — semanas'],
+                        ['Atividade', 'User Story', 'Item que fica pronto (checklist)'],
+                        ['Tarefa', 'Task', 'Passo / subtarefa'],
+                      ] as const).map(([pt, scrum, desc]) => (
+                        <div key={pt}>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{pt}</span>
+                            <span className="text-[9px] font-black text-brand-red uppercase tracking-wide shrink-0">{scrum}</span>
+                          </div>
+                          <p className="text-[9px] text-slate-400 leading-tight">{desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
                     <p className="text-[9px] text-slate-400 italic font-medium leading-tight">
                       Arquitetura moderna e responsiva de alta performance.
                     </p>
