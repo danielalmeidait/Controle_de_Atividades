@@ -108,9 +108,9 @@ const DonutChart = ({ tasks }: { tasks: Task[] }) => {
   const otherCount = tasks.length - doneCount - wipCount;
 
   const data = [
-    { name: 'TBD/Outros', value: otherCount, color: '#cc0000' },
-    { name: 'WIP', value: wipCount, color: '#94a3b8' },
-    { name: 'Done', value: doneCount, color: '#15803d' },
+    { name: 'A definir/Outros', value: otherCount, color: '#cc0000' },
+    { name: 'Em andamento', value: wipCount, color: '#94a3b8' },
+    { name: 'Concluído', value: doneCount, color: '#15803d' },
   ];
 
   const total = tasks.length;
@@ -784,7 +784,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [themeFilter, setThemeFilter] = useState<string | null>(null);
   const [systemFilter, setSystemFilter] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string[]>(['WIP', 'TBD']);
+  const [statusFilter, setStatusFilter] = useState<string[]>(['Em andamento', 'A definir']);
   const [requestingThemeFilter, setRequestingThemeFilter] = useState<string[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [isThemeDemandanteFilterOpen, setIsThemeDemandanteFilterOpen] = useState(false);
@@ -973,7 +973,7 @@ export default function App() {
     return tasks.filter(task => {
       if (!task.deadline) return false;
       const deadline = parseISO(task.deadline);
-      return isBefore(deadline, targetDate) && isAfter(deadline, today) && task.status !== 'Done';
+      return isBefore(deadline, targetDate) && isAfter(deadline, today) && !isDoneStatus(task.status);
     }).length;
   };
 
@@ -1213,7 +1213,7 @@ export default function App() {
       description: idea.content || '',
       system: idea.relatedSystem || '',
       type: 'Melhoria',
-      status: 'TBD',
+      status: 'A definir',
       criticality: 'Média',
       theme: '',
       requester: '',
@@ -1245,9 +1245,10 @@ export default function App() {
   
   const renderPainel = () => {
     const projects = initiatives.filter(i => i.kind === 'project');
-    const standaloneInis = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null);
+    const allInis = initiatives.filter(i => i.kind === 'initiative');
+    const standaloneInis = allInis.filter(i => i.parentId == null);
     const activeProjects = projects.filter(p => p.status !== 'completed');
-    const activeInis = standaloneInis.filter(i => i.status !== 'completed');
+    const activeInis = allInis.filter(i => i.status !== 'completed');
 
     const isWip = (s: string) => { const x = (s || '').toLowerCase(); return x.includes('andamento') || x.includes('wip') || x.includes('progress') || x.includes('fazendo'); };
     const wipCount = tasks.filter(t => isWip(t.status)).length;
@@ -1281,7 +1282,7 @@ export default function App() {
 
     const kpis = [
       { label: 'Projetos ativos', value: activeProjects.length, sub: `${projects.length} no total`, color: 'text-brand-red', tab: 'projects' as const },
-      { label: 'Iniciativas em and.', value: activeInis.length, sub: `${standaloneInis.length} avulsas`, color: 'text-blue-500', tab: 'initiatives' as const },
+      { label: 'Iniciativas em and.', value: activeInis.length, sub: `${allInis.length} no total`, color: 'text-blue-500', tab: 'initiatives' as const },
       { label: 'Atividades WIP', value: wipCount, sub: `${tasks.length} atividades`, color: 'text-amber-500', tab: 'kanban' as const },
       { label: '% concluído', value: `${overallProg.pct}%`, sub: `${overallProg.done}/${overallProg.total} tarefas`, color: 'text-green-600', tab: 'cascade' as const },
       { label: 'Atrasadas', value: overdue.length, sub: 'prazo vencido', color: overdue.length ? 'text-red-600' : 'text-slate-400', tab: 'consolidated' as const },
@@ -2467,7 +2468,7 @@ export default function App() {
                   system: stats?.systems[0]?.name || 'Nenhum',
                   requester: '',
                   criticality: 'Média',
-                  status: stats?.taskStatuses[0]?.name || '',
+                  status: stats?.taskStatuses?.find(s => s.name === 'A definir')?.name || stats?.taskStatuses?.[0]?.name || 'A definir',
                   deadline: format(new Date(), 'yyyy-MM-dd'),
                   description: '',
                   checklist: [],

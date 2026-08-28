@@ -54,7 +54,7 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives,
     if (taskStatuses && taskStatuses.length > 0) {
       return taskStatuses.map(s => s.name);
     }
-    return ['TBD', 'WIP', 'Done'];
+    return ['A definir', 'Em andamento', 'Concluído'];
   }, [taskStatuses]);
 
   // Aplica filtros Tema e Sistema locais (além dos filtros globais já aplicados em tasks)

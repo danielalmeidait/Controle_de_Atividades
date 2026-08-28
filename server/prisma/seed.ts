@@ -6,7 +6,7 @@ async function main() {
   const themes = ['Automações', 'UX', 'IA', 'Dados', 'Desenvolvimento']
   const systems = ['SGP', 'COCKPIT', 'BPM', 'CRM']
   const taskTypes = ['Inovação', 'Implantação', 'Melhoria', 'Correção']
-  const taskStatuses = ['TBD', 'WIP', 'Done']
+  const taskStatuses = ['A definir', 'Em andamento', 'Concluído']
   const businessAreas: { name: string; responsible: string }[] = [
     { name: 'Financeiro', responsible: '' },
     { name: 'Comercial', responsible: '' },
