@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Plus, Trash2, ChevronRight, ChevronDown, Briefcase, Lightbulb, Link2, ArrowUpCircle, Target,
+  Plus, Trash2, ChevronRight, ChevronDown, Briefcase, Lightbulb, Link2, ArrowUpCircle, Target, GripVertical,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Initiative, Task } from '../types';
@@ -18,6 +18,7 @@ export interface HierarchyActions {
   onPromote: (id: number) => Promise<void>;
   onSelectTask: (t: Task) => void;
   onAttachMany?: (ids: number[], projectId: number) => Promise<void>;
+  onReorder?: (orderedIds: number[]) => Promise<void>;
   // Contexto de busca/filtro (top bar). narrowing = há busca ou filtro ativo.
   query?: string;
   filteredTaskIds?: Set<number>;
@@ -160,7 +161,7 @@ function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId
 // =========================================================================
 // TELA: PROJETOS  (Projeto → Iniciativas → Atividades → checklist)
 // =========================================================================
-export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onAttachMany, query, filteredTaskIds, narrowing }: HierarchyActions) {
+export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onAttachMany, onReorder, query, filteredTaskIds, narrowing }: HierarchyActions) {
   const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
   const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
   const projectNameById = new Map(initiatives.filter(i => i.kind === 'project').map(p => [p.id, p.name]));
@@ -179,6 +180,19 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
     if (onAttachMany) await onAttachMany(attachIds, projId);
     else for (const id of attachIds) await onUpdate(id, { parentId: projId });
     closeAttach();
+  };
+  // Drag-and-drop para reordenar iniciativas dentro de um projeto
+  const [dragKid, setDragKid] = useState<number | null>(null);
+  const [dragOverKid, setDragOverKid] = useState<number | null>(null);
+  const handleKidDrop = (kids: Initiative[], targetId: number) => {
+    if (dragKid == null || dragKid === targetId) return;
+    const ids = kids.map(k => k.id);
+    const from = ids.indexOf(dragKid);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, dragKid);
+    onReorder?.(ids);
   };
 
   return (
@@ -233,9 +247,19 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
 
                       {/* Iniciativas filhas */}
                       {kids.map(k => (
-                        <div key={k.id} className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
+                        <div key={k.id}
+                          draggable
+                          onDragStart={(e) => { setDragKid(k.id); e.dataTransfer.effectAllowed = 'move'; }}
+                          onDragEnd={() => { setDragKid(null); setDragOverKid(null); }}
+                          onDragOver={(e) => { e.preventDefault(); if (dragKid != null && dragKid !== k.id) setDragOverKid(k.id); }}
+                          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverKid(prev => (prev === k.id ? null : prev)); }}
+                          onDrop={(e) => { e.preventDefault(); handleKidDrop(kids, k.id); setDragKid(null); setDragOverKid(null); }}
+                          className={clsx('bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 transition-all',
+                            dragKid === k.id && 'opacity-40', dragOverKid === k.id && 'ring-2 ring-brand-red/50')}
+                        >
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2 min-w-0">
+                              <GripVertical size={14} className="text-slate-300 dark:text-slate-600 cursor-grab shrink-0" />
                               <KindBadge kind="initiative" size="xs" />
                               <span className="text-sm font-bold dark:text-white truncate">{k.name}</span>
                             </div>

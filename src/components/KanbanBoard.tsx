@@ -36,14 +36,19 @@ interface KanbanBoardProps {
   taskStatuses: TaskStatusModel[];
   initiatives: Initiative[];
   onSelectTask: (task: Task) => void;
+  onMoveTask: (taskId: number, newStatus: string) => void;
 }
 
-export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives, onSelectTask }: KanbanBoardProps) {
+export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives, onSelectTask, onMoveTask }: KanbanBoardProps) {
   const kindById = useMemo(() => {
     const m = new Map<number, InitiativeKind>();
     for (const i of initiatives) m.set(i.id, i.kind);
     return m;
   }, [initiatives]);
+
+  // Drag-and-drop entre colunas (muda o status da atividade)
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [kanbanThemeFilter, setKanbanThemeFilter] = useState<string[]>([]);
   const [kanbanSystemFilter, setKanbanSystemFilter] = useState<string[]>([]);
   const [isThemeFilterOpen, setIsThemeFilterOpen] = useState(false);
@@ -208,9 +213,21 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives,
           return (
             <div
               key={col}
+              onDragOver={(e) => { e.preventDefault(); if (dragOverCol !== col) setDragOverCol(col); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(prev => (prev === col ? null : prev)); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (draggingId != null) {
+                  const dragged = tasks.find(x => x.id === draggingId);
+                  if (dragged && dragged.status !== col) onMoveTask(draggingId, col);
+                }
+                setDraggingId(null);
+                setDragOverCol(null);
+              }}
               className={cn(
-                "flex-1 min-w-[300px] max-w-[380px] rounded-2xl border flex flex-col shrink-0 snap-start",
-                sv.col
+                "flex-1 min-w-[300px] max-w-[380px] rounded-2xl border flex flex-col shrink-0 snap-start transition-all",
+                sv.col,
+                dragOverCol === col && "ring-2 ring-brand-red/60 ring-offset-1"
               )}
             >
               {/* Column header */}
@@ -235,7 +252,13 @@ export function KanbanBoard({ tasks, themes, systems, taskStatuses, initiatives,
                     </div>
                   ) : (
                     colTasks.map(task => (
-                      <div key={task.id}>
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={(e) => { setDraggingId(task.id); e.dataTransfer.effectAllowed = 'move'; }}
+                        onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                        className={cn("cursor-grab active:cursor-grabbing", draggingId === task.id && "opacity-40")}
+                      >
                         <TaskCard task={task} onClick={() => onSelectTask(task)} kind={task.initiativeId != null ? kindById.get(task.initiativeId) ?? null : null} />
                       </div>
                     ))

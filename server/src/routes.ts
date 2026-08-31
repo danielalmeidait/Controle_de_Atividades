@@ -568,7 +568,7 @@ router.get('/initiatives', async (req, res) => {
         const where: any = {};
         if (kind) where.kind = String(kind);
         if (parentId !== undefined) where.parentId = parentId === 'null' ? null : Number(parentId);
-        const initiatives = await prisma.initiative.findMany({ where, orderBy: { id: 'desc' } });
+        const initiatives = await prisma.initiative.findMany({ where, orderBy: [{ position: 'asc' }, { id: 'desc' }] });
         res.json(initiatives);
     } catch (error) {
         res.status(500).json({ error: 'Erro ao buscar iniciativas' });

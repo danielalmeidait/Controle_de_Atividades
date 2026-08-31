@@ -109,6 +109,7 @@ export interface Initiative {
   name: string;
   kind: InitiativeKind;      // 'project' = Projeto | 'initiative' = Iniciativa
   parentId?: number | null;  // pai (Projeto) quando é uma iniciativa/feature; null = raiz
+  position?: number | null;  // ordem manual dentro do projeto (drag-and-drop)
   description?: string;
   theme?: string;
   system?: string;

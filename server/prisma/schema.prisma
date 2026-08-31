@@ -81,6 +81,7 @@ model Initiative {
   theme       String?
   system      String?
   status      String       @default("planning") // planning, active, paused, completed
+  position    Float?       // ordem manual dentro do projeto (drag-and-drop)
   startDate   DateTime?
   targetDate  DateTime?
   createdAt   DateTime     @default(now())

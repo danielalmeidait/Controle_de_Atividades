@@ -975,6 +975,27 @@ export default function App() {
         await fetchData();
       } catch { addToast('Erro ao atrelar iniciativas.', 'error'); }
     },
+    onReorder: async (orderedIds: number[]) => {
+      // Otimista: reordena o array (childrenOf preserva a ordem) para refletir na hora.
+      setInitiatives(cur => {
+        const byId = new Map<number, Initiative>(cur.map(i => [i.id, i]));
+        const movedSet = new Set(orderedIds);
+        const reordered: Initiative[] = [];
+        orderedIds.forEach((id, idx) => {
+          const item = byId.get(id);
+          if (item) reordered.push({ ...item, position: idx });
+        });
+        const others = cur.filter(i => !movedSet.has(i.id));
+        return [...others, ...reordered];
+      });
+      try {
+        const res = await Promise.all(orderedIds.map((id, idx) => fetch(`/api/initiatives/${id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ position: idx }),
+        })));
+        if (res.some(r => !r.ok)) throw new Error();
+        await fetchData();
+      } catch { addToast('Erro ao reordenar.', 'error'); await fetchData(); }
+    },
   };
 
   const getExpiringSoonCount = () => {
@@ -1037,6 +1058,22 @@ export default function App() {
     } catch (error) {
       console.error('Erro ao deletar atividade:', error);
       addToast('Erro ao excluir atividade', 'error');
+    }
+  };
+
+  // Mover atividade entre colunas do Kanban (muda o status). Atualização otimista + resync.
+  const handleMoveTask = async (taskId: number, newStatus: string) => {
+    const prev = tasks;
+    setTasks(cur => cur.map(t => (t.id === taskId ? { ...t, status: newStatus } : t)));
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error();
+      fetchData();
+    } catch {
+      setTasks(prev);
+      addToast('Erro ao mover atividade', 'error');
     }
   };
 
@@ -2602,6 +2639,7 @@ export default function App() {
                 taskStatuses={stats?.taskStatuses || []}
                 initiatives={initiatives}
                 onSelectTask={(t) => { setSelectedTask(t); setIsModalOpen(true); }}
+                onMoveTask={handleMoveTask}
               />
             )}
             {activeTab === 'ideas' && renderIdeas()}
