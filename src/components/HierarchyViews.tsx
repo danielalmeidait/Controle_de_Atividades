@@ -269,11 +269,6 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Atividades do projeto</p>
                         <ActivityList initiativeId={proj.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
-                        {onNewActivity && (
-                          <button onClick={() => onNewActivity(proj.id)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
-                            <Plus size={12} /> Nova atividade
-                          </button>
-                        )}
                       </div>
 
                       {/* Iniciativas filhas */}
