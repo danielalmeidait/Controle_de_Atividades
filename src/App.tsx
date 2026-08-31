@@ -898,13 +898,15 @@ export default function App() {
   const dismissToast = (id: number) => setToasts(prev => prev.filter(t => t.id !== id));
 
   // --- Iniciativas / Projetos ---
-  const createInitiative = async (data: Partial<Initiative>) => {
+  const createInitiative = async (data: Partial<Initiative>): Promise<number | undefined> => {
     try {
       const res = await fetch('/api/initiatives', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       if (!res.ok) throw new Error();
+      const created = await res.json().catch(() => ({}));
       addToast(data.kind === 'project' ? 'Projeto criado!' : 'Iniciativa criada!');
       await fetchData();
-    } catch { addToast('Erro ao criar.', 'error'); }
+      return created?.id;
+    } catch { addToast('Erro ao criar.', 'error'); return undefined; }
   };
   const updateInitiative = async (id: number, data: Partial<Initiative>) => {
     try {
@@ -964,6 +966,23 @@ export default function App() {
     onDelete: deleteInitiative,
     onPromote: promoteInitiative,
     onSelectTask: (t: Task) => { setSelectedTask(t); setIsModalOpen(true); },
+    onNewActivity: (initiativeId: number) => {
+      setSelectedTask({
+        name: '',
+        type: stats?.taskTypes[0]?.name || '',
+        theme: stats?.themes[0]?.name || 'Nenhum',
+        system: stats?.systems[0]?.name || 'Nenhum',
+        requester: '',
+        criticality: 'Média',
+        status: stats?.taskStatuses?.find(s => s.name === 'A definir')?.name || stats?.taskStatuses?.[0]?.name || 'A definir',
+        deadline: format(new Date(), 'yyyy-MM-dd'),
+        description: '',
+        checklist: [],
+        lastUpdate: 'Atividade inicializada.',
+        initiativeId,
+      } as Task);
+      setIsModalOpen(true);
+    },
     onAttachMany: async (ids: number[], projectId: number) => {
       if (ids.length === 0) return;
       try {

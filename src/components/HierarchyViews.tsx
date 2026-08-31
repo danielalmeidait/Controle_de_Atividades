@@ -12,11 +12,12 @@ import { rollupProject, rollupTasks, activitiesOf, childrenOf, taskProgress, typ
 export interface HierarchyActions {
   initiatives: Initiative[];
   tasks: Task[];
-  onCreate: (data: Partial<Initiative>) => Promise<void>;
+  onCreate: (data: Partial<Initiative>) => Promise<number | void>;
   onUpdate: (id: number, data: Partial<Initiative>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onPromote: (id: number) => Promise<void>;
   onSelectTask: (t: Task) => void;
+  onNewActivity?: (initiativeId: number) => void;
   onAttachMany?: (ids: number[], projectId: number) => Promise<void>;
   onReorder?: (orderedIds: number[]) => Promise<void>;
   // Contexto de busca/filtro (top bar). narrowing = há busca ou filtro ativo.
@@ -91,22 +92,30 @@ function Header({ icon: Icon, title, subtitle }: { icon: any; title: string; sub
 }
 
 // Formulário inline para criar iniciativa/projeto
-function NewItemForm({ kind, parentId, onCreate, onCancel }: {
+function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }: {
   kind: 'project' | 'initiative'; parentId?: number | null;
-  onCreate: (data: Partial<Initiative>) => Promise<void>; onCancel: () => void;
+  projects?: Initiative[];
+  onCreate: (data: Partial<Initiative>) => Promise<number | void>; onCancel: () => void;
+  onCreated?: (createdId?: number) => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('planning');
+  const [projectId, setProjectId] = useState<string>('');
   const [saving, setSaving] = useState(false);
+
+  // Seletor de projeto: apenas ao criar iniciativa avulsa (sem projeto pai fixo).
+  const showProjectPicker = kind === 'initiative' && parentId == null && !!projects && projects.length > 0;
 
   const submit = async () => {
     if (!name.trim() || saving) return;
     setSaving(true);
     try {
-      await onCreate({ name: name.trim(), description: description.trim(), status, kind, parentId: parentId ?? null });
-      setName(''); setDescription(''); setStatus('planning');
+      const finalParent = parentId != null ? parentId : (showProjectPicker && projectId ? Number(projectId) : null);
+      const createdId = await onCreate({ name: name.trim(), description: description.trim(), status, kind, parentId: finalParent });
+      setName(''); setDescription(''); setStatus('planning'); setProjectId('');
       onCancel();
+      onCreated?.(typeof createdId === 'number' ? createdId : undefined);
     } finally { setSaving(false); }
   };
 
@@ -118,6 +127,16 @@ function NewItemForm({ kind, parentId, onCreate, onCancel }: {
       <input value={description} onChange={e => setDescription(e.target.value)}
         placeholder="Descrição (opcional)"
         className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
+      {showProjectPicker && (
+        <div className="space-y-1">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Projeto (opcional)</label>
+          <select value={projectId} onChange={e => setProjectId(e.target.value)}
+            className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
+            <option value="">Nenhum (avulsa)</option>
+            {projects!.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
@@ -161,7 +180,7 @@ function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId
 // =========================================================================
 // TELA: PROJETOS  (Projeto → Iniciativas → Atividades → checklist)
 // =========================================================================
-export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onAttachMany, onReorder, query, filteredTaskIds, narrowing }: HierarchyActions) {
+export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onNewActivity, onAttachMany, onReorder, query, filteredTaskIds, narrowing }: HierarchyActions) {
   const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
   const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
   const projectNameById = new Map(initiatives.filter(i => i.kind === 'project').map(p => [p.id, p.name]));
@@ -207,7 +226,14 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
         </button>
       </div>
 
-      {creating && <NewItemForm kind="project" onCreate={onCreate} onCancel={() => setCreating(false)} />}
+      {creating && (
+        <NewItemForm
+          kind="project"
+          onCreate={onCreate}
+          onCancel={() => setCreating(false)}
+          onCreated={(id) => { if (id) { setExpanded(id); setAddingInitTo(id); } }}
+        />
+      )}
 
       <div className="space-y-4">
         {projects.map(proj => {
@@ -243,6 +269,11 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Atividades do projeto</p>
                         <ActivityList initiativeId={proj.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
+                        {onNewActivity && (
+                          <button onClick={() => onNewActivity(proj.id)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
+                            <Plus size={12} /> Nova atividade
+                          </button>
+                        )}
                       </div>
 
                       {/* Iniciativas filhas */}
@@ -270,6 +301,11 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                             </div>
                           </div>
                           <ActivityList initiativeId={k.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
+                          {onNewActivity && (
+                            <button onClick={() => onNewActivity(k.id)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
+                              <Plus size={12} /> Nova atividade
+                            </button>
+                          )}
                         </div>
                       ))}
 
@@ -335,7 +371,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
 // =========================================================================
 // TELA: INICIATIVAS AVULSAS
 // =========================================================================
-export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
+export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask, onNewActivity, query, filteredTaskIds, narrowing }: HierarchyActions) {
   const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
   const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null && itemVisible(i, initiatives, tasks, ctx));
   const projects = initiatives.filter(i => i.kind === 'project');
@@ -355,7 +391,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
         </button>
       </div>
 
-      {creating && <NewItemForm kind="initiative" onCreate={onCreate} onCancel={() => setCreating(false)} />}
+      {creating && <NewItemForm kind="initiative" projects={projects} onCreate={onCreate} onCancel={() => setCreating(false)} />}
 
       <div className="space-y-3">
         {standalone.map(ini => {
@@ -414,6 +450,11 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                     className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/20">
                     <div className="p-5 space-y-3">
                       <ActivityList initiativeId={ini.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
+                      {onNewActivity && (
+                        <button onClick={() => onNewActivity(ini.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
+                          <Plus size={12} /> Nova atividade
+                        </button>
+                      )}
                     </div>
                   </motion.div>
                 )}
