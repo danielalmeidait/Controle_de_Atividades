@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Plus, Trash2, ChevronRight, ChevronDown, Briefcase, Lightbulb, Link2, ArrowUpCircle, Target, GripVertical,
+  Plus, Trash2, ChevronRight, ChevronDown, Briefcase, Lightbulb, Link2, ArrowUpCircle, Target, GripVertical, Pencil,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Initiative, Task } from '../types';
@@ -153,6 +153,44 @@ function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }
   );
 }
 
+// Formulário inline para editar nome/descrição/status de uma iniciativa ou projeto
+function EditItemForm({ item, onSave, onCancel }: {
+  item: Initiative; onSave: (data: Partial<Initiative>) => void | Promise<void>; onCancel: () => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [description, setDescription] = useState(item.description || '');
+  const [status, setStatus] = useState(item.status || 'planning');
+  const [saving, setSaving] = useState(false);
+  const submit = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    try { await onSave({ name: name.trim(), description: description.trim(), status }); onCancel(); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3 border border-slate-200 dark:border-slate-700">
+      <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
+        placeholder="Nome"
+        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
+      <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+        placeholder="Descrição"
+        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20 resize-none" />
+      <div className="flex items-center gap-2">
+        <select value={status} onChange={e => setStatus(e.target.value)}
+          className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
+          {INITIATIVE_STATUS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        <div className="flex-1" />
+        <button onClick={onCancel} className="px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>
+        <button onClick={submit} disabled={!name.trim() || saving}
+          className="px-4 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700 disabled:opacity-40 transition-colors">
+          {saving ? 'Salvando…' : 'Salvar'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Lista de atividades ligadas a uma iniciativa
 function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId: number; tasks: Task[]; onSelectTask: (t: Task) => void; ctx: FilterCtx }) {
   const acts = visibleActivities(initiativeId, tasks, ctx);
@@ -200,6 +238,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
     else for (const id of attachIds) await onUpdate(id, { parentId: projId });
     closeAttach();
   };
+  const [editingId, setEditingId] = useState<number | null>(null);
   // Drag-and-drop para reordenar iniciativas dentro de um projeto
   const [dragKid, setDragKid] = useState<number | null>(null);
   const [dragOverKid, setDragOverKid] = useState<number | null>(null);
@@ -243,6 +282,9 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
           return (
             <div key={proj.id} className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
               <div className="p-6">
+                {editingId === proj.id ? (
+                  <EditItemForm item={proj} onSave={(data) => onUpdate(proj.id, data)} onCancel={() => setEditingId(null)} />
+                ) : (<>
                 <div className="flex items-start justify-between gap-4">
                   <button onClick={() => setExpanded(isOpen ? null : proj.id)} className="flex items-start gap-3 min-w-0 flex-1 text-left">
                     {isOpen ? <ChevronDown size={20} className="text-slate-400 mt-1 shrink-0" /> : <ChevronRight size={20} className="text-slate-400 mt-1 shrink-0" />}
@@ -255,9 +297,13 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                       <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">{statusLabel(proj.status)} · {kids.length} iniciativa(s)</p>
                     </div>
                   </button>
-                  <button onClick={() => onDelete(proj.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"><Trash2 size={16} /></button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditingId(proj.id)} title="Editar nome/descrição" className="p-2 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Pencil size={15} /></button>
+                    <button onClick={() => onDelete(proj.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                  </div>
                 </div>
                 <div className="mt-4"><ProgressBar p={prog} /></div>
+                </>)}
               </div>
 
               <AnimatePresence>
@@ -283,6 +329,9 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                           className={clsx('bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-100 dark:border-slate-800 transition-all',
                             dragKid === k.id && 'opacity-40', dragOverKid === k.id && 'ring-2 ring-brand-red/50')}
                         >
+                          {editingId === k.id ? (
+                            <div className="mb-2"><EditItemForm item={k} onSave={(data) => onUpdate(k.id, data)} onCancel={() => setEditingId(null)} /></div>
+                          ) : (
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <GripVertical size={14} className="text-slate-300 dark:text-slate-600 cursor-grab shrink-0" />
@@ -291,10 +340,12 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                             </div>
                             <div className="flex items-center gap-1">
                               <span className="text-[10px] text-slate-400 uppercase font-bold">{statusLabel(k.status)}</span>
+                              <button onClick={() => setEditingId(k.id)} title="Editar nome/descrição" className="p-1.5 text-slate-400 hover:text-brand-red rounded-lg"><Pencil size={13} /></button>
                               <button onClick={() => onUpdate(k.id, { parentId: null })} title="Desatrelar do projeto" className="p-1.5 text-slate-400 hover:text-brand-red rounded-lg"><Link2 size={13} /></button>
                               <button onClick={() => onDelete(k.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={13} /></button>
                             </div>
                           </div>
+                          )}
                           <ActivityList initiativeId={k.id} tasks={tasks} onSelectTask={onSelectTask} ctx={ctx} />
                           {onNewActivity && (
                             <button onClick={() => onNewActivity(k.id)} className="mt-2 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors">
@@ -373,6 +424,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [movingId, setMovingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   return (
     <div className="space-y-8">
@@ -395,6 +447,10 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
           return (
             <div key={ini.id} className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
               <div className="p-5">
+                {editingId === ini.id ? (
+                  <EditItemForm item={ini} onSave={(data) => onUpdate(ini.id, data)} onCancel={() => setEditingId(null)} />
+                ) : (
+                <>
                 <div className="flex items-start justify-between gap-4">
                   <button onClick={() => setExpanded(isOpen ? null : ini.id)} className="flex items-start gap-3 min-w-0 flex-1 text-left">
                     {isOpen ? <ChevronDown size={18} className="text-slate-400 mt-0.5 shrink-0" /> : <ChevronRight size={18} className="text-slate-400 mt-0.5 shrink-0" />}
@@ -408,6 +464,8 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                     </div>
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditingId(ini.id)} title="Editar nome/descrição"
+                      className="p-2 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Pencil size={14} /></button>
                     {projects.length > 0 && (
                       <button onClick={() => setMovingId(movingId === ini.id ? null : ini.id)} title="Associar a um projeto existente"
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-black uppercase text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
@@ -437,6 +495,8 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                     }} className="px-3 py-2 bg-brand-red text-white rounded-lg text-xs font-bold hover:bg-red-700">Associar</button>
                     <button onClick={() => setMovingId(null)} className="px-3 py-2 text-xs font-bold text-slate-500">Cancelar</button>
                   </div>
+                )}
+                </>
                 )}
               </div>
               <AnimatePresence>
