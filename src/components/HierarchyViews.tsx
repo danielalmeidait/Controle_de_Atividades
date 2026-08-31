@@ -50,11 +50,19 @@ export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: 
   return !!ctx.filteredTaskIds && acts.some(t => ctx.filteredTaskIds!.has(t.id));
 }
 
-// Atividades a exibir sob um item: filtradas pela busca+filtros quando algo está ativo.
+// Prioridade por criticidade: Alta (0) → Média (1) → Baixa/demais (2).
+function critRank(c?: string): number {
+  const s = (c || '').toLowerCase();
+  if (s.includes('alta')) return 0;
+  if (s.includes('méd') || s.includes('med')) return 1;
+  return 2;
+}
+
+// Atividades a exibir sob um item: filtradas pela busca+filtros e ordenadas por prioridade.
 function visibleActivities(initiativeId: number, tasks: Task[], ctx: FilterCtx): Task[] {
   const acts = activitiesOf(initiativeId, tasks);
-  if (!ctx.narrowing || !ctx.filteredTaskIds) return acts;
-  return acts.filter(t => ctx.filteredTaskIds!.has(t.id));
+  const filtered = (!ctx.narrowing || !ctx.filteredTaskIds) ? acts : acts.filter(t => ctx.filteredTaskIds!.has(t.id));
+  return [...filtered].sort((a, b) => critRank(a.criticality) - critRank(b.criticality));
 }
 
 const INITIATIVE_STATUS: { value: string; label: string }[] = [
