@@ -19,6 +19,7 @@ model Task {
   theme          String
   system         String
   requester      String
+  responsible    String?   // responsável pela atividade (para filtro por responsável)
   criticality    String
   status         String
   deadline       DateTime? // nullable: nem toda tarefa tem prazo
@@ -31,6 +32,8 @@ model Task {
   lastUpdate     String
   updateHistory  String    @default("[]") // JSON string [{date, text}]
   description    String
+  isHighlight    Boolean   @default(false) // destaque no Painel de Demandas
+  highlightColor String?   // cor do selo/borda do highlight (opcional)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
@@ -80,8 +83,11 @@ model Initiative {
   description String       @default("")
   theme       String?
   system      String?
+  responsible String?       // responsável pelo projeto/iniciativa (para filtro por responsável)
   status      String       @default("planning") // planning, active, paused, completed
   position    Float?       // ordem manual dentro do projeto (drag-and-drop)
+  isHighlight Boolean      @default(false) // destaque no Painel de Demandas
+  highlightColor String?   // cor do selo/borda do highlight (opcional)
   startDate   DateTime?
   targetDate  DateTime?
   createdAt   DateTime     @default(now())
@@ -104,4 +110,13 @@ model BusinessArea {
   name        String   @unique
   responsible String   @default("") // responsável pela área
   createdAt   DateTime @default(now())
+}
+
+model Responsible {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  email     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

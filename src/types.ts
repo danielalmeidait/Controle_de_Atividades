@@ -20,6 +20,7 @@ export interface Task {
   theme: string;
   system: string;
   requester: string;
+  responsible?: string | null;
   criticality: Criticality;
   status: TaskStatus;
   deadline: string | null;
@@ -32,6 +33,10 @@ export interface Task {
   lastUpdate: string;
   updateHistory: UpdateEntry[];
   description: string;
+  isHighlight?: boolean;     // destaque no Painel de Demandas
+  highlightColor?: string | null; // cor do selo/borda do highlight
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Theme {
@@ -113,7 +118,10 @@ export interface Initiative {
   description?: string;
   theme?: string;
   system?: string;
+  responsible?: string | null; // responsável pelo projeto/iniciativa
   status: string;
+  isHighlight?: boolean;     // destaque no Painel de Demandas
+  highlightColor?: string | null; // cor do selo/borda do highlight
   startDate?: string;
   targetDate?: string;
   createdAt: string;
@@ -125,6 +133,15 @@ export interface BusinessArea {
   name: string;
   responsible: string;
   createdAt?: string;
+}
+
+export interface Responsible {
+  id: number;
+  name: string;
+  email?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Delivery {

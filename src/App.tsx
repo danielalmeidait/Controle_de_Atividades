@@ -8,6 +8,7 @@ import {
   Layers,
   Monitor,
   ChevronRight,
+  ChevronDown,
   Filter,
   Calendar,
   Clock,
@@ -50,7 +51,7 @@ import {
 } from 'recharts';
 import { addBusinessDays, isAfter, isBefore, parseISO, format, formatDistanceToNow, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Task, Theme, System, ChecklistItem, UpdateEntry, TaskTypeModel, TaskStatusModel, SystemStatus, Idea, BackupStatus, Initiative, BusinessArea } from './types';
+import { Task, Theme, System, ChecklistItem, UpdateEntry, TaskTypeModel, TaskStatusModel, SystemStatus, Idea, BackupStatus, Initiative, BusinessArea, Responsible } from './types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { AISupportForm } from './components/AISupportForm';
@@ -59,7 +60,7 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { ProjectsView, InitiativesView, CascadeView, itemVisible } from './components/HierarchyViews';
 import { KindBadge } from './components/KindBadge';
 import { rollupTasks, rollupProject, activitiesOf, isDoneStatus } from './lib/rollup';
-import { Briefcase, Target } from 'lucide-react';
+import { Briefcase, Target, Flag } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -466,7 +467,7 @@ const ThemeModal = ({ theme, isOpen, onClose, onSave }: { theme: Partial<Theme> 
   );
 };
 
-const AreaModal = ({ area, isOpen, onClose, onSave }: { area: Partial<BusinessArea> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<BusinessArea>) => void }) => {
+const AreaModal = ({ area, isOpen, onClose, onSave, responsibles }: { area: Partial<BusinessArea> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<BusinessArea>) => void, responsibles: Responsible[] }) => {
   const [name, setName] = useState('');
   const [responsible, setResponsible] = useState('');
   useEffect(() => { if (area) { setName(area.name || ''); setResponsible(area.responsible || ''); } else { setName(''); setResponsible(''); } }, [area, isOpen]);
@@ -486,12 +487,59 @@ const AreaModal = ({ area, isOpen, onClose, onSave }: { area: Partial<BusinessAr
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Responsável pela Área</label>
-            <input value={responsible} onChange={(e) => setResponsible(e.target.value)} placeholder="Ex: Gisele Souza"
-              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium" />
+            <select value={responsible} onChange={(e) => setResponsible(e.target.value)}
+              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium">
+              <option value="">Sem responsável</option>
+              {responsibles.filter(r => r.active).map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+            </select>
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <button onClick={onClose} className="px-6 py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors uppercase text-xs tracking-widest">Cancelar</button>
             <button onClick={() => name.trim() && onSave({ ...area, name: name.trim(), responsible })} className="px-8 py-3 bg-brand-red text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all">Salvar</button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const ResponsibleModal = ({ responsible, isOpen, onClose, onSave }: { responsible: Partial<Responsible> | null, isOpen: boolean, onClose: () => void, onSave: (data: Partial<Responsible>) => void }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [active, setActive] = useState(true);
+  useEffect(() => {
+    if (responsible) { setName(responsible.name || ''); setEmail(responsible.email || ''); setActive(responsible.active !== false); }
+    else { setName(''); setEmail(''); setActive(true); }
+  }, [responsible, isOpen]);
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden ring-1 ring-white/10">
+        <div className="bg-brand-red p-6 text-white flex justify-between items-center">
+          <h2 className="text-xl font-bold uppercase tracking-tight">{responsible?.id ? 'Editar Responsável' : 'Novo Responsável'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><X size={20} /></button>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome</label>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: João Silva"
+              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">E-mail (opcional)</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="exemplo@empresa.com"
+              className="w-full p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl dark:text-white outline-none focus:ring-4 focus:ring-brand-red/10 transition-all font-medium" />
+          </div>
+          <div className="flex items-center gap-3 flex-wrap bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4">
+            <button type="button" onClick={() => setActive(v => !v)}
+              className={cn('relative w-9 h-5 rounded-full transition-colors shrink-0', active ? 'bg-brand-red' : 'bg-slate-300 dark:bg-slate-600')}>
+              <span className={cn('absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all', active ? 'left-[18px]' : 'left-0.5')} />
+            </button>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Ativo (disponível para seleção)</span>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <button onClick={onClose} className="px-6 py-3 font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors uppercase text-xs tracking-widest">Cancelar</button>
+            <button onClick={() => name.trim() && onSave({ ...responsible, name: name.trim(), email: email || null, active })} className="px-8 py-3 bg-brand-red text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all">Salvar</button>
           </div>
         </div>
       </motion.div>
@@ -762,10 +810,11 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, ta
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [activeTab, setActiveTab] = useState<'painel' | 'projects' | 'initiatives' | 'cascade' | 'themes' | 'systems' | 'consolidated' | 'kanban' | 'ideas' | 'ai-support' | 'settings'>('painel');
+  const [activeTab, setActiveTab] = useState<'painel' | 'demandas' | 'projects' | 'initiatives' | 'cascade' | 'themes' | 'systems' | 'consolidated' | 'kanban' | 'ideas' | 'ai-support' | 'settings'>('painel');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isCascadeMenuOpen, setIsCascadeMenuOpen] = useState(false);
 
   const [editingTheme, setEditingTheme] = useState<Partial<Theme> | null>(null);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
@@ -786,13 +835,16 @@ export default function App() {
   const [systemFilter, setSystemFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string[]>(['Em andamento', 'A definir']);
   const [requestingThemeFilter, setRequestingThemeFilter] = useState<string[]>([]);
+  const [responsibleFilter, setResponsibleFilter] = useState<string[]>([]);
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false);
   const [isThemeDemandanteFilterOpen, setIsThemeDemandanteFilterOpen] = useState(false);
+  const [isResponsibleFilterOpen, setIsResponsibleFilterOpen] = useState(false);
   const [isTableStatusFilterOpen, setIsTableStatusFilterOpen] = useState(false);
   const [isTableThemeDemandanteFilterOpen, setIsTableThemeDemandanteFilterOpen] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement>(null);
   const themeDemandanteFilterRef = useRef<HTMLDivElement>(null);
-  const [consolidatedSortCol, setConsolidatedSortCol] = useState<'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea' | null>(null);
+  const responsibleFilterRef = useRef<HTMLDivElement>(null);
+  const [consolidatedSortCol, setConsolidatedSortCol] = useState<'name' | 'status' | 'criticality' | 'deadline' | 'requestingTheme' | 'requestingArea' | null>(null);
   const [consolidatedSortDir, setConsolidatedSortDir] = useState<'asc' | 'desc'>('asc');
 
   // State for data from API
@@ -822,19 +874,26 @@ export default function App() {
   const [businessAreas, setBusinessAreas] = useState<BusinessArea[]>([]);
   const [editingArea, setEditingArea] = useState<Partial<BusinessArea> | null>(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+
+  const [responsibles, setResponsibles] = useState<Responsible[]>([]);
+  const [editingResponsible, setEditingResponsible] = useState<Partial<Responsible> | null>(null);
+  const [isResponsibleModalOpen, setIsResponsibleModalOpen] = useState(false);
+
   const [painelSegment, setPainelSegment] = useState<'all' | 'projects' | 'initiatives'>('all');
+  const [demandasSegment, setDemandasSegment] = useState<'all' | 'projects' | 'initiatives'>('all');
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [tasksRes, statsRes, sysStatusRes, ideasRes, backupRes, initiativesRes, areasRes] = await Promise.all([
+      const [tasksRes, statsRes, sysStatusRes, ideasRes, backupRes, initiativesRes, areasRes, responsiblesRes] = await Promise.all([
         fetch('/api/tasks'),
         fetch('/api/stats'),
         fetch('/api/system/status'),
         fetch('/api/ideas'),
         fetch('/api/backup/status'),
         fetch('/api/initiatives'),
-        fetch('/api/business-areas')
+        fetch('/api/business-areas'),
+        fetch('/api/responsibles')
       ]);
       const tasksData     = await tasksRes.json();
       const statsData     = await statsRes.json();
@@ -843,6 +902,7 @@ export default function App() {
       const backupData    = await backupRes.json();
       const initiativesData = await initiativesRes.json();
       const areasData       = await areasRes.json();
+      const responsiblesData = await responsiblesRes.json();
       setTasks(tasksData);
       setStats(statsData);
       setSystemStatus(sysStatusData);
@@ -850,6 +910,7 @@ export default function App() {
       if (!backupData.error) setBackupStatus(backupData);
       setInitiatives(Array.isArray(initiativesData) ? initiativesData : []);
       setBusinessAreas(Array.isArray(areasData) ? areasData : []);
+      setResponsibles(Array.isArray(responsiblesData) ? responsiblesData : []);
     } catch (error) {
       console.error('Erro ao buscar dados:', error);
     } finally {
@@ -868,6 +929,9 @@ export default function App() {
       }
       if (themeDemandanteFilterRef.current && !themeDemandanteFilterRef.current.contains(e.target as Node)) {
         setIsThemeDemandanteFilterOpen(false);
+      }
+      if (responsibleFilterRef.current && !responsibleFilterRef.current.contains(e.target as Node)) {
+        setIsResponsibleFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -956,6 +1020,31 @@ export default function App() {
       addToast('Área excluída!');
       await fetchData();
     } catch { addToast('Erro ao excluir área.', 'error'); }
+  };
+
+  const handleSaveResponsible = async (data: Partial<Responsible>) => {
+    if (!data.name?.trim()) return;
+    try {
+      const isEdit = !!data.id;
+      const res = await fetch(isEdit ? `/api/responsibles/${data.id}` : '/api/responsibles', {
+        method: isEdit ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: data.name.trim(), email: data.email ?? null, active: data.active !== false }),
+      });
+      if (!res.ok) throw new Error();
+      addToast(isEdit ? 'Responsável atualizado!' : 'Responsável criado!');
+      setIsResponsibleModalOpen(false); setEditingResponsible(null);
+      await fetchData();
+    } catch { addToast('Erro ao salvar responsável.', 'error'); }
+  };
+
+  const handleDeleteResponsible = async (id: number) => {
+    if (!confirm('Excluir responsável?')) return;
+    try {
+      const res = await fetch(`/api/responsibles/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error();
+      addToast('Responsável excluído!');
+      await fetchData();
+    } catch { addToast('Erro ao excluir responsável.', 'error'); }
   };
 
   const hierarchyActions = {
@@ -1210,7 +1299,13 @@ export default function App() {
 
   const q = searchQuery.toLowerCase().trim();
   const searchActive = q.length > 0;
-  const filtersActive = !!themeFilter || !!systemFilter || statusFilter.length > 0 || requestingThemeFilter.length > 0;
+  const filtersActive = !!themeFilter || !!systemFilter || statusFilter.length > 0 || requestingThemeFilter.length > 0 || responsibleFilter.length > 0;
+
+  // Lista de responsáveis cadastrados para o filtro.
+  const responsibleOptions = responsibles
+    .filter(r => r.active)
+    .map(r => r.name)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const taskMatchesSearch = (t: Task) => {
     const reqArea = (t as any).requestingArea || (t as any).requestingTheme || '';
@@ -1226,7 +1321,8 @@ export default function App() {
     return (!themeFilter || t.theme === themeFilter) &&
       (!systemFilter || t.system === systemFilter) &&
       (statusFilter.length === 0 || statusFilter.includes(t.status)) &&
-      (requestingThemeFilter.length === 0 || requestingThemeFilter.includes(reqArea));
+      (requestingThemeFilter.length === 0 || requestingThemeFilter.includes(reqArea)) &&
+      (responsibleFilter.length === 0 || responsibleFilter.includes((t.responsible || '').trim()));
   };
   const filteredTasks = tasks.filter(t => taskMatchesSearch(t) && taskMatchesFilters(t));
   const filteredTaskIds = new Set<number>(filteredTasks.map(t => t.id));
@@ -1334,7 +1430,7 @@ export default function App() {
     const itemProg = (it: typeof initiatives[number]) =>
       it.kind === 'project' ? rollupProject(it, initiatives, tasks) : rollupTasks(activitiesOf(it.id, tasks));
 
-    const painelCtx = { query: searchQuery, filteredTaskIds, narrowing: searchActive || filtersActive };
+    const painelCtx = { query: searchQuery, filteredTaskIds, narrowing: searchActive || filtersActive, responsibleFilter };
     const baseSeg = painelSegment === 'projects' ? projects
       : painelSegment === 'initiatives' ? standaloneInis
       : [...projects, ...standaloneInis];
@@ -1522,6 +1618,214 @@ export default function App() {
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  // =====================================================================
+  // TELA: DEMANDAS — Painel executivo (KPIs + entregas por iniciativa +
+  // highlights). Mescla o Painel com o layout de acompanhamento mensal.
+  // =====================================================================
+  const renderDemandas = () => {
+    const now = new Date();
+    const monthLabel = format(now, 'MMMM/yyyy', { locale: ptBR });
+    const inCurrentMonth = (iso?: string) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    };
+    const isWip = (s: string) => {
+      const n = (s || '').toLowerCase();
+      return ['andamento', 'wip', 'fazendo', 'progress', 'execut'].some(p => n.includes(p));
+    };
+
+    // KPIs
+    const doneThisMonth = tasks.filter(t => isDoneStatus(t.status) && inCurrentMonth(t.updatedAt));
+    const emAndamento = tasks.filter(t => !isDoneStatus(t.status) && isWip(t.status));
+    const backlog = tasks.filter(t => !isDoneStatus(t.status) && !isWip(t.status));
+
+    // Tipos presentes (para a quebra dos cards)
+    const TYPE_DOT: Record<string, string> = {
+      'Inovação': 'bg-brand-red', 'Implantação': 'bg-blue-500', 'Melhoria': 'bg-slate-400', 'Correção': 'bg-green-500',
+    };
+    const typeDot = (t: string) => TYPE_DOT[t] || 'bg-slate-400';
+    const allTypes = Array.from(new Set(tasks.map(t => t.type).filter(Boolean))) as string[];
+
+    const iniById = new Map<number, Initiative>(initiatives.map(i => [i.id, i] as [number, Initiative]));
+    const parentName = (it: Initiative) => (it.parentId != null ? iniById.get(it.parentId)?.name : undefined);
+
+    // Entregas do mês agrupadas por iniciativa (associada a projeto OU avulsa).
+    type Group = { ini: Initiative | null; total: number; byType: Record<string, number> };
+    const groupsMap = new Map<number | 'none', Group>();
+    for (const t of doneThisMonth) {
+      const key: number | 'none' = t.initiativeId ?? 'none';
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, { ini: key === 'none' ? null : (iniById.get(key as number) || null), total: 0, byType: {} });
+      }
+      const g = groupsMap.get(key)!;
+      g.total++;
+      g.byType[t.type] = (g.byType[t.type] || 0) + 1;
+    }
+    let groups = Array.from(groupsMap.values());
+    // Filtro de segmento: projetos (iniciativas com pai) x avulsas (sem pai)
+    if (demandasSegment === 'projects') groups = groups.filter(g => g.ini && g.ini.parentId != null);
+    else if (demandasSegment === 'initiatives') groups = groups.filter(g => g.ini && g.ini.parentId == null);
+    groups.sort((a, b) => b.total - a.total);
+
+    // Highlights: iniciativas marcadas com o seletor.
+    const HL_BORDER: Record<string, string> = {
+      red: 'border-brand-red', amber: 'border-amber-500', green: 'border-green-500', blue: 'border-blue-500', purple: 'border-purple-500',
+    };
+    const HL_TEXT: Record<string, string> = {
+      red: 'text-brand-red', amber: 'text-amber-600 dark:text-amber-400', green: 'text-green-600 dark:text-green-400', blue: 'text-blue-600 dark:text-blue-400', purple: 'text-purple-600 dark:text-purple-400',
+    };
+    // Highlights unificados: iniciativas E atividades marcadas.
+    type HLItem = { key: string; tag: string; name: string; desc?: string; color: string; badge: string; onClick: () => void };
+    const iniHighlights: HLItem[] = initiatives.filter(i => i.isHighlight).map(i => ({
+      key: `ini-${i.id}`,
+      tag: i.theme || parentName(i) || (i.kind === 'project' ? 'Projeto' : 'Iniciativa'),
+      name: i.name,
+      desc: i.description,
+      color: i.highlightColor || 'red',
+      badge: i.kind === 'project' ? 'Projeto' : 'Iniciativa',
+      onClick: () => setActiveTab(i.kind === 'project' ? 'projects' : 'initiatives'),
+    }));
+    const taskHighlights: HLItem[] = tasks.filter(t => t.isHighlight).map(t => ({
+      key: `task-${t.id}`,
+      tag: t.theme || t.system || 'Atividade',
+      name: t.name,
+      desc: t.description || t.lastUpdate,
+      color: t.highlightColor || 'red',
+      badge: 'Atividade',
+      onClick: () => { setSelectedTask(t); setIsModalOpen(true); },
+    }));
+    const highlights = [...iniHighlights, ...taskHighlights];
+
+    const kpis = [
+      { label: 'Entregas realizadas', value: doneThisMonth.length, sub: `em ${monthLabel}`, icon: CheckCircle2, accent: 'bg-brand-red text-white', num: 'text-white', subCls: 'text-white/70' },
+      { label: 'Em andamento', value: emAndamento.length, sub: 'atividades WIP', icon: Loader2, accent: 'bg-amber-500 text-white', num: 'text-white', subCls: 'text-white/70' },
+      { label: 'Backlog', value: backlog.length, sub: 'itens a fazer', icon: Layers, accent: 'bg-slate-800 dark:bg-slate-700 text-white', num: 'text-white', subCls: 'text-white/60' },
+    ];
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg flex justify-between items-end">
+          <div>
+            <span className="text-[10px] font-black text-white/70 uppercase tracking-widest">Dash executivo · demandas</span>
+            <h1 className="text-4xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <Flag size={32} /> Painel de Demandas
+            </h1>
+            <p className="text-xs text-white/70 font-bold mt-1">
+              {doneThisMonth.length} entregas no mês · {emAndamento.length} em andamento · backlog de {backlog.length} itens
+            </p>
+          </div>
+          <div className="hidden md:flex items-center gap-2 text-xs font-bold text-white/80">
+            <Calendar size={14} />
+            <span className="capitalize">{monthLabel}</span>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {kpis.map(kpi => (
+            <div key={kpi.label} className={cn('p-6 rounded-3xl shadow-lg flex items-center gap-5', kpi.accent)}>
+              <kpi.icon size={40} className="shrink-0 opacity-90" />
+              <div>
+                <p className={cn('text-4xl font-black leading-none', kpi.num)}>{kpi.value}</p>
+                <p className="text-sm font-black uppercase tracking-wider mt-2">{kpi.label}</p>
+                <p className={cn('text-[11px] font-bold mt-0.5', kpi.subCls)}>{kpi.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Entregas por iniciativa */}
+        <div>
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <h3 className="text-sm font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest">
+              Entregas realizadas por iniciativa · <span className="capitalize">{monthLabel}</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              {([
+                { id: 'all', label: 'Tudo' },
+                { id: 'projects', label: 'De projeto' },
+                { id: 'initiatives', label: 'Avulsas' },
+              ] as const).map(seg => (
+                <button key={seg.id} onClick={() => setDemandasSegment(seg.id)}
+                  className={cn('px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all',
+                    demandasSegment === seg.id ? 'bg-brand-red text-white shadow' : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-200 dark:border-slate-800 hover:border-brand-red/30')}>
+                  {seg.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {groups.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-10 text-center text-sm text-slate-400 italic">
+              Nenhuma entrega concluída neste mês para o filtro selecionado.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {groups.map((g, i) => {
+                const title = g.ini ? g.ini.name : 'Sem iniciativa';
+                const sub = g.ini ? (parentName(g.ini) ? `Projeto · ${parentName(g.ini)}` : (g.ini.parentId == null ? 'Iniciativa avulsa' : '')) : 'Atividades avulsas';
+                return (
+                  <div key={g.ini?.id ?? `none-${i}`} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+                    <div className="bg-brand-red px-4 py-2.5">
+                      <p className="text-sm font-black text-white truncate">{title}</p>
+                      {sub && <p className="text-[10px] font-bold text-white/70 truncate">{sub}</p>}
+                    </div>
+                    <div className="p-4 flex items-center gap-4">
+                      <div className="text-center shrink-0">
+                        <p className="text-3xl font-black text-slate-800 dark:text-white leading-none">{g.total}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">entregas</p>
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        {allTypes.map(tp => (
+                          <div key={tp} className="flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                              <span className={cn('w-2 h-2 rounded-full shrink-0', typeDot(tp))} /> {tp}
+                            </span>
+                            <span className="text-[11px] font-black text-slate-700 dark:text-slate-200 tabular-nums">{g.byType[tp] || 0}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Highlights do mês */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-black text-slate-500 dark:text-slate-300 uppercase tracking-widest">Highlights do mês</h3>
+            <span className="text-[10px] font-bold text-slate-400">{highlights.length} destaque(s)</span>
+          </div>
+          {highlights.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-8 text-center">
+              <p className="text-sm text-slate-400 italic">Nenhuma iniciativa destacada.</p>
+              <p className="text-xs text-slate-400 mt-1">Ative o seletor <span className="font-bold">"Destacar no Painel de Demandas"</span> ao editar uma iniciativa.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {highlights.map(h => (
+                <button key={h.key} onClick={h.onClick}
+                  className={cn('text-left bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 border-l-4 rounded-r-2xl p-4 shadow-sm hover:shadow-md transition-shadow', HL_BORDER[h.color] || HL_BORDER.red)}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={cn('text-[10px] font-black uppercase tracking-widest truncate', HL_TEXT[h.color] || HL_TEXT.red)}>{h.tag}</p>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-full shrink-0">{h.badge}</span>
+                  </div>
+                  <p className="text-sm font-black text-slate-800 dark:text-white mt-1">{h.name}</p>
+                  {h.desc && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 line-clamp-3">{h.desc}</p>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -1896,7 +2200,7 @@ export default function App() {
             <table className="w-full text-left">
               <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                 {(() => {
-                  const handleSort = (col: 'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea') => {
+                  const handleSort = (col: 'name' | 'status' | 'criticality' | 'deadline' | 'requestingTheme' | 'requestingArea') => {
                     if (consolidatedSortCol === col) {
                       setConsolidatedSortDir(d => d === 'asc' ? 'desc' : 'asc');
                     } else {
@@ -1904,7 +2208,7 @@ export default function App() {
                       setConsolidatedSortDir('asc');
                     }
                   };
-                  const SortIcon = ({ col }: { col: 'name' | 'status' | 'deadline' | 'requestingTheme' | 'requestingArea' }) => {
+                  const SortIcon = ({ col }: { col: 'name' | 'status' | 'criticality' | 'deadline' | 'requestingTheme' | 'requestingArea' }) => {
                     if (consolidatedSortCol !== col) return <ArrowUpDown size={11} className="text-slate-300 group-hover:text-slate-500 transition-colors" />;
                     return consolidatedSortDir === 'asc'
                       ? <ArrowUp size={11} className="text-brand-red" />
@@ -1920,6 +2224,11 @@ export default function App() {
                   <th className="px-8 py-3">
                     <button onClick={() => handleSort('status')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
                       <CircleDot size={12} /> Status <SortIcon col="status" />
+                    </button>
+                  </th>
+                  <th className="px-8 py-3">
+                    <button onClick={() => handleSort('criticality')} className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 dark:hover:text-slate-200 transition-colors group">
+                      <AlertCircle size={12} /> Prioridade <SortIcon col="criticality" />
                     </button>
                   </th>
                   <th className="px-8 py-3">
@@ -1948,6 +2257,10 @@ export default function App() {
                       let valB: string | number = '';
                       if (consolidatedSortCol === 'name') { valA = a.name?.toLowerCase() || ''; valB = b.name?.toLowerCase() || ''; }
                       else if (consolidatedSortCol === 'status') { valA = a.status?.toLowerCase() || ''; valB = b.status?.toLowerCase() || ''; }
+                      else if (consolidatedSortCol === 'criticality') {
+                        const critRank = (c?: string) => { const s = (c || '').toLowerCase(); return s.includes('alta') ? 0 : (s.includes('méd') || s.includes('med')) ? 1 : 2; };
+                        valA = critRank(a.criticality); valB = critRank(b.criticality);
+                      }
                       else if (consolidatedSortCol === 'deadline') {
                         valA = a.deadline ? new Date(a.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
                         valB = b.deadline ? new Date(b.deadline).getTime() : (consolidatedSortDir === 'asc' ? Infinity : -Infinity);
@@ -1978,7 +2291,10 @@ export default function App() {
                         <p className="text-sm font-bold text-slate-800 dark:text-white group-hover:text-brand-red transition-colors">
                           {idx + 1}. {task.name}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">{task.theme} | {task.system}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {task.theme} | {task.system}
+                          {task.responsible && <span className="ml-1 text-slate-500 dark:text-slate-300 font-bold">· 👤 {task.responsible}</span>}
+                        </p>
                       </td>
 
                       {/* Status Icon */}
@@ -1991,6 +2307,18 @@ export default function App() {
                           <CircleDot size={22} className="text-slate-400" />
                         )}
                         <p className={cn("text-[10px] font-black uppercase mt-1", statusColor)}>{sLabel}</p>
+                      </td>
+
+                      {/* Prioridade */}
+                      <td className="px-8 py-5">
+                        <span className={cn(
+                          "inline-block px-2 py-1 rounded-lg text-[10px] font-black uppercase",
+                          task.criticality === 'Alta' ? "bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400" :
+                            task.criticality === 'Média' ? "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" :
+                              "bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400"
+                        )}>
+                          {task.criticality || '—'}
+                        </span>
                       </td>
 
                       {/* Prazo */}
@@ -2255,6 +2583,33 @@ export default function App() {
             {businessAreas.length === 0 && <p className="text-xs text-slate-400 italic p-2">Nenhuma área cadastrada.</p>}
           </div>
         </div>
+
+        {/* Responsáveis */}
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">Responsáveis</h2>
+            <button onClick={() => { setEditingResponsible(null); setIsResponsibleModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-red text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-colors">
+              <Plus size={14} /> Novo
+            </button>
+          </div>
+          <div className="space-y-2">
+            {responsibles.map(r => (
+              <div key={r.id} className={cn("flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl", !r.active && "opacity-60")}>
+                <div>
+                  <p className="text-sm font-bold dark:text-white">{r.name}</p>
+                  <p className="text-[10px] text-slate-400">{r.email || (r.active ? 'Ativo' : 'Inativo')}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {!r.active && <span className="text-[10px] font-black uppercase text-slate-400 bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">Inativo</span>}
+                  <button onClick={() => { setEditingResponsible(r); setIsResponsibleModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-brand-red hover:bg-brand-red/10 rounded-lg transition-colors"><Settings size={14} /></button>
+                  <button onClick={() => handleDeleteResponsible(r.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+            {responsibles.length === 0 && <p className="text-xs text-slate-400 italic p-2">Nenhum responsável cadastrado.</p>}
+          </div>
+        </div>
       </div>
 
       {backupStatus && (
@@ -2309,29 +2664,58 @@ export default function App() {
         <nav className="flex-1 px-4 space-y-2 py-4 overflow-y-auto custom-scrollbar">
           {([
             { id: 'painel',       icon: Home,            label: 'Painel'        },
+            { id: 'demandas',     icon: Flag,            label: 'Demandas'      },
             { id: 'projects',     icon: Briefcase,       label: 'Projetos'      },
             { id: 'initiatives',  icon: Lightbulb,       label: 'Iniciativas'   },
-            { id: 'cascade',      icon: Target,          label: 'Cascata'       },
-            { id: 'themes',        icon: LayoutDashboard, label: 'Frentes'       },
-            { id: 'systems',      icon: Monitor,         label: 'Sistemas'      },
-            { id: 'consolidated', icon: Layers,          label: 'Consolidado'   },
+            { id: 'cascade',      icon: Target,          label: 'Cascata', children: [
+              { id: 'themes',       icon: LayoutDashboard, label: 'Frentes'     },
+              { id: 'systems',      icon: Monitor,         label: 'Sistemas'    },
+              { id: 'consolidated', icon: Layers,          label: 'Consolidado' },
+            ] },
             { id: 'kanban',       icon: ListTodo,       label: 'Kanban'        },
             { id: 'ideas',        icon: NotebookPen,     label: 'Anotações'     },
             { id: 'settings',     icon: Settings,        label: 'Configurações' },
-          ] as const).map(({ id, icon: Icon, label }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={cn(
-                "w-full flex items-center gap-4 p-3 rounded-xl transition-all",
-                activeTab === id
-                  ? "bg-brand-red text-white shadow-lg shadow-red-500/20"
-                  : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+          ] as const).map(({ id, icon: Icon, label, children }: any) => (
+            <div key={id}>
+              <button
+                onClick={() => {
+                  setActiveTab(id);
+                  if (children) setIsCascadeMenuOpen(o => !o);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-4 p-3 rounded-xl transition-all",
+                  activeTab === id
+                    ? "bg-brand-red text-white shadow-lg shadow-red-500/20"
+                    : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                )}
+              >
+                <Icon size={22} className="shrink-0" />
+                <span className={cn("font-bold whitespace-nowrap transition-opacity duration-300", isSidebarCollapsed ? "opacity-0 hidden" : "opacity-100 block")}>{label}</span>
+                {children && !isSidebarCollapsed && (
+                  <ChevronDown size={16} className={cn("ml-auto shrink-0 transition-transform duration-300", isCascadeMenuOpen ? "rotate-180" : "rotate-0")} />
+                )}
+              </button>
+
+              {children && isCascadeMenuOpen && !isSidebarCollapsed && (
+                <div className="mt-1 ml-4 pl-3 border-l border-slate-200 dark:border-slate-700 space-y-1">
+                  {children.map(({ id: cid, icon: CIcon, label: clabel }: any) => (
+                    <button
+                      key={cid}
+                      onClick={() => setActiveTab(cid)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-2.5 rounded-xl transition-all text-sm",
+                        activeTab === cid
+                          ? "bg-brand-red text-white shadow-lg shadow-red-500/20"
+                          : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      )}
+                    >
+                      <CIcon size={18} className="shrink-0" />
+                      <span className="font-bold whitespace-nowrap">{clabel}</span>
+                    </button>
+                  ))}
+                </div>
               )}
-            >
-              <Icon size={22} className="shrink-0" />
-              <span className={cn("font-bold whitespace-nowrap transition-opacity duration-300", isSidebarCollapsed ? "opacity-0 hidden" : "opacity-100 block")}>{label}</span>
-            </button>
+            </div>
           ))}
         </nav>
 
@@ -2518,6 +2902,86 @@ export default function App() {
               </AnimatePresence>
             </div>
 
+            {/* Responsável Filter - Premium Multi-select */}
+            <div className="relative" ref={responsibleFilterRef}>
+              <button
+                onClick={() => setIsResponsibleFilterOpen(!isResponsibleFilterOpen)}
+                className={cn(
+                  "flex items-center gap-2 px-4 h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm hover:border-brand-red transition-all group",
+                  responsibleFilter.length > 0 && "border-brand-red/50 bg-brand-red/[0.02]"
+                )}
+              >
+                <div className={cn(
+                  "p-1.5 rounded-lg transition-colors",
+                  responsibleFilter.length > 0 ? "bg-brand-red text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:text-brand-red"
+                )}>
+                  <Users size={14} />
+                </div>
+                <div className="flex flex-col items-start leading-tight pr-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Responsável</span>
+                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                    {responsibleFilter.length === 0 ? 'Todos' :
+                      responsibleFilter.length === 1 ? responsibleFilter[0] :
+                        `${responsibleFilter.length} Selecionados`}
+                  </span>
+                </div>
+                <ChevronRight size={14} className={cn("text-slate-300 transition-transform", isResponsibleFilterOpen ? "rotate-90" : "rotate-0")} />
+              </button>
+
+              <AnimatePresence>
+                {isResponsibleFilterOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 overflow-hidden"
+                  >
+                    <div className="p-4 border-b border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtrar por Responsável</span>
+                      <button
+                        onClick={() => setResponsibleFilter([])}
+                        className="text-[10px] font-bold text-brand-red hover:bg-brand-red/10 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                    <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar">
+                      {responsibleOptions.length === 0 && (
+                        <p className="px-3 py-4 text-xs text-slate-400 italic text-center">Nenhum responsável cadastrado ainda.</p>
+                      )}
+                      {responsibleOptions.map(name => {
+                        const isSelected = responsibleFilter.includes(name);
+                        return (
+                          <button
+                            key={name}
+                            onClick={() => {
+                              setResponsibleFilter(isSelected
+                                ? responsibleFilter.filter(x => x !== name)
+                                : [...responsibleFilter, name]);
+                            }}
+                            className={cn(
+                              "w-full px-3 py-3 flex items-center justify-between rounded-xl transition-all mb-1",
+                              isSelected ? "bg-brand-red/5 text-brand-red" : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+                            )}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={cn(
+                                "w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0",
+                                isSelected ? "bg-brand-red border-brand-red text-white" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                              )}>
+                                {isSelected && <Plus size={12} className="rotate-0" />}
+                              </div>
+                              <span className="text-xs font-bold truncate">{name}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* Expanding Search Bar - Moved to right */}
             <div className="group relative flex items-center">
               <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all duration-500 ease-in-out w-11 hover:w-72 focus-within:w-72 shadow-sm">
@@ -2543,6 +3007,7 @@ export default function App() {
                   theme: stats?.themes[0]?.name || 'Nenhum',
                   system: stats?.systems[0]?.name || 'Nenhum',
                   requester: '',
+                  responsible: '',
                   criticality: 'Média',
                   status: stats?.taskStatuses?.find(s => s.name === 'A definir')?.name || stats?.taskStatuses?.[0]?.name || 'A definir',
                   deadline: format(new Date(), 'yyyy-MM-dd'),
@@ -2644,9 +3109,10 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {activeTab === 'painel' && renderPainel()}
-            {activeTab === 'projects' && <ProjectsView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
-            {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
-            {activeTab === 'cascade' && <CascadeView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} />}
+            {activeTab === 'demandas' && renderDemandas()}
+            {activeTab === 'projects' && <ProjectsView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
+            {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
+            {activeTab === 'cascade' && <CascadeView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
             {activeTab === 'themes' && renderThemes()}
             {activeTab === 'systems' && renderSystems()}
             {activeTab === 'consolidated' && renderConsolidated()}
@@ -2682,6 +3148,7 @@ export default function App() {
         taskTypes={stats?.taskTypes || []}
         taskStatuses={stats?.taskStatuses || []}
         initiatives={initiatives}
+        responsibles={responsibles}
       />
 
       <ThemeModal
@@ -2703,6 +3170,14 @@ export default function App() {
         isOpen={isAreaModalOpen}
         onClose={() => { setIsAreaModalOpen(false); setEditingArea(null); }}
         onSave={saveArea}
+        responsibles={responsibles}
+      />
+
+      <ResponsibleModal
+        responsible={editingResponsible}
+        isOpen={isResponsibleModalOpen}
+        onClose={() => { setIsResponsibleModalOpen(false); setEditingResponsible(null); }}
+        onSave={handleSaveResponsible}
       />
 
       <TypeModal

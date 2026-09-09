@@ -66,8 +66,9 @@ router.get('/tasks/:id', async (req, res) => {
 router.post('/tasks', async (req, res) => {
     try {
         const {
-            name, type, theme, system, requester, criticality, status,
+            name, type, theme, system, requester, responsible, criticality, status,
             deadline, requestDate, requestingArea, checklist, description, lastUpdate, initiativeId,
+            isHighlight, highlightColor,
         } = req.body;
 
         if (!name || !type || !theme || !system || !requester || !criticality || !status) {
@@ -81,6 +82,7 @@ router.post('/tasks', async (req, res) => {
                 theme,
                 system,
                 requester,
+                responsible:   responsible ?? null,
                 criticality,
                 status,
                 deadline:      deadline ? new Date(deadline) : null,
@@ -91,6 +93,8 @@ router.post('/tasks', async (req, res) => {
                 initiativeId:  initiativeId ?? null,
                 checklist:     JSON.stringify(checklist || []),
                 updateHistory: JSON.stringify([]),
+                isHighlight:   isHighlight === true || isHighlight === 'true',
+                highlightColor: highlightColor ?? null,
             }
         });
         res.status(201).json(parseTask(newTask));
@@ -108,8 +112,9 @@ router.put('/tasks/:id', async (req, res) => {
         if (!existing) return res.status(404).json({ error: 'Tarefa não encontrada' });
 
         const {
-            name, type, theme, system, requester, criticality, status,
+            name, type, theme, system, requester, responsible, criticality, status,
             deadline, requestingArea, description, lastUpdate, checklist, initiativeId,
+            isHighlight, highlightColor,
         } = req.body;
 
         let history: { date: string; text: string }[] = [];
@@ -127,6 +132,7 @@ router.put('/tasks/:id', async (req, res) => {
                 theme:         theme         ?? existing.theme,
                 system:        system        ?? existing.system,
                 requester:     requester     ?? existing.requester,
+                responsible:   responsible !== undefined ? responsible : existing.responsible,
                 criticality:   criticality   ?? existing.criticality,
                 status:        status        ?? existing.status,
                 deadline:      deadline !== undefined ? (deadline ? new Date(deadline) : null) : existing.deadline,
@@ -136,6 +142,8 @@ router.put('/tasks/:id', async (req, res) => {
                 initiativeId:  initiativeId !== undefined ? initiativeId : existing.initiativeId,
                 checklist:     checklist ? JSON.stringify(checklist) : existing.checklist,
                 updateHistory: JSON.stringify(history),
+                isHighlight:   isHighlight !== undefined ? (isHighlight === true || isHighlight === 'true') : existing.isHighlight,
+                highlightColor: highlightColor !== undefined ? highlightColor : existing.highlightColor,
                 updatedAt:     new Date(),
             }
         });
@@ -559,6 +567,12 @@ function sanitizeInitiative(body: any) {
     } else if (data.parentId !== undefined && data.parentId !== null) {
         data.parentId = Number(data.parentId);
     }
+    if (data.isHighlight !== undefined) {
+        data.isHighlight = data.isHighlight === true || data.isHighlight === 'true';
+    }
+    if (data.highlightColor !== undefined && data.highlightColor !== null) {
+        data.highlightColor = String(data.highlightColor) || null;
+    }
     return data;
 }
 
@@ -708,6 +722,58 @@ router.delete('/business-areas/:id', async (req, res) => {
         res.json({ message: 'Área de negócio deletada' });
     } catch (error) {
         res.status(500).json({ error: 'Erro ao deletar área de negócio' });
+    }
+});
+
+// --- Responsáveis ---
+router.get('/responsibles', async (req, res) => {
+    try {
+        const responsibles = await prisma.responsible.findMany({ orderBy: { name: 'asc' } });
+        res.json(responsibles);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao buscar responsáveis' });
+    }
+});
+
+router.post('/responsibles', async (req, res) => {
+    try {
+        const { name, email, active } = req.body;
+        if (!name) return res.status(400).json({ error: 'Campo obrigatório: name.' });
+        const responsible = await prisma.responsible.create({
+            data: { name, email: email ?? null, active: active !== false },
+        });
+        res.status(201).json(responsible);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao criar responsável' });
+    }
+});
+
+router.put('/responsibles/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { name, email, active } = req.body;
+        const responsible = await prisma.responsible.update({
+            where: { id: parseInt(id) },
+            data: {
+                ...(name !== undefined ? { name } : {}),
+                ...(email !== undefined ? { email } : {}),
+                ...(active !== undefined ? { active } : {}),
+                updatedAt: new Date(),
+            },
+        });
+        res.json(responsible);
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao atualizar responsável' });
+    }
+});
+
+router.delete('/responsibles/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await prisma.responsible.delete({ where: { id: parseInt(id) } });
+        res.json({ message: 'Responsável deletado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao deletar responsável' });
     }
 });
 

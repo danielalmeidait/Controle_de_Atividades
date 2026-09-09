@@ -1,6 +1,6 @@
-import { Task, Area, System } from './types';
+import { Task, Theme, System } from './types';
 
-export const MOCK_AREAS: Area[] = [
+export const MOCK_AREAS: Theme[] = [
   { id: 1, name: 'IA', taskCount: 10, inProgressCount: 4 },
   { id: 2, name: 'UX', taskCount: 17, inProgressCount: 7 },
   { id: 3, name: 'CX', taskCount: 17, inProgressCount: 9 },
@@ -25,7 +25,7 @@ export const MOCK_TASKS: Task[] = [
     id: 1,
     name: 'RPA ITP',
     type: 'Implantação',
-    area: 'Automações',
+    theme: 'Automações',
     system: 'SGP',
     requester: 'Gisele',
     criticality: 'Alta',
@@ -46,7 +46,7 @@ export const MOCK_TASKS: Task[] = [
     id: 2,
     name: "Road Show com P.O's",
     type: 'Inovação',
-    area: 'UX',
+    theme: 'UX',
     system: 'COCKPIT',
     requester: 'Leandro Rosseto',
     criticality: 'Média',
@@ -67,7 +67,7 @@ export const MOCK_TASKS: Task[] = [
     id: 3,
     name: 'Eficiência das integrações (SGP)',
     type: 'Melhoria',
-    area: 'IA',
+    theme: 'IA',
     system: 'SGP',
     requester: 'Ana Flávia',
     criticality: 'Alta',

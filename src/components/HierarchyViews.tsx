@@ -4,7 +4,7 @@ import {
   Plus, Trash2, ChevronRight, ChevronDown, Briefcase, Lightbulb, Link2, ArrowUpCircle, Target, GripVertical, Pencil,
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import type { Initiative, Task } from '../types';
+import type { Initiative, Task, Responsible } from '../types';
 import { KindBadge } from './KindBadge';
 import { rollupProject, rollupTasks, activitiesOf, childrenOf, taskProgress, type Progress } from '../lib/rollup';
 
@@ -24,9 +24,11 @@ export interface HierarchyActions {
   query?: string;
   filteredTaskIds?: Set<number>;
   narrowing?: boolean;
+  responsibleFilter?: string[];
+  responsibles?: Responsible[];
 }
 
-export interface FilterCtx { query?: string; filteredTaskIds?: Set<number>; narrowing?: boolean }
+export interface FilterCtx { query?: string; filteredTaskIds?: Set<number>; narrowing?: boolean; responsibleFilter?: string[] }
 
 // Um projeto/iniciativa é visível se: a busca casa com nome/descrição, OU sua subárvore
 // tem alguma atividade que passa na busca+filtros atuais. Sem busca/filtro, tudo aparece.
@@ -36,6 +38,16 @@ export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: 
   const searchActive = q.length > 0;
   const nameHit = searchActive && (item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q));
   if (nameHit) return true;
+
+  // Filtro por responsável: o próprio item (ou, num projeto, alguma iniciativa filha)
+  // é do responsável selecionado → visível independentemente das atividades.
+  const respFilter = ctx.responsibleFilter || [];
+  const respActive = respFilter.length > 0;
+  if (respActive) {
+    const selfAndKids = item.kind === 'project' ? [item, ...childrenOf(item.id, initiatives)] : [item];
+    if (selfAndKids.some(n => n.responsible && respFilter.includes((n.responsible || '').trim()))) return true;
+  }
+
   let acts: Task[];
   if (item.kind === 'project') {
     const ids = [item.id, ...childrenOf(item.id, initiatives).map(c => c.id)];
@@ -43,9 +55,9 @@ export function itemVisible(item: Initiative, initiatives: Initiative[], tasks: 
   } else {
     acts = activitiesOf(item.id, tasks);
   }
-  // Item sem atividades não pode ser filtrado por status/área de atividade:
-  // aparece sempre (a menos que haja busca por texto que não casou com o nome).
-  if (acts.length === 0) return !searchActive;
+  // Item sem atividades: quando há filtro por responsável e o item não casou acima,
+  // deve ficar oculto; caso contrário aparece (a menos de busca por texto sem match).
+  if (acts.length === 0) return respActive ? false : !searchActive;
   // Item com atividades: aparece se alguma passa na busca+filtros atuais.
   return !!ctx.filteredTaskIds && acts.some(t => ctx.filteredTaskIds!.has(t.id));
 }
@@ -56,6 +68,41 @@ function critRank(c?: string): number {
   if (s.includes('alta')) return 0;
   if (s.includes('méd') || s.includes('med')) return 1;
   return 2;
+}
+
+// Rótulo de prioridade a partir do rank de criticidade.
+function critLabel(rank: number): 'Alta' | 'Média' | 'Baixa' {
+  return rank === 0 ? 'Alta' : rank === 1 ? 'Média' : 'Baixa';
+}
+
+// Prioridade "estabelecida" de um nó (projeto/iniciativa): maior criticidade
+// entre suas atividades. Retorna null quando o nó não possui atividades.
+function nodePriority(node: Initiative, initiatives: Initiative[], tasks: Task[]): 'Alta' | 'Média' | 'Baixa' | null {
+  let acts: Task[];
+  if (node.kind === 'project') {
+    const ids = [node.id, ...childrenOf(node.id, initiatives).map(c => c.id)];
+    acts = tasks.filter(t => t.initiativeId != null && ids.includes(t.initiativeId));
+  } else {
+    acts = activitiesOf(node.id, tasks);
+  }
+  if (acts.length === 0) return null;
+  const best = Math.min(...acts.map(t => critRank(t.criticality)));
+  return critLabel(best);
+}
+
+// Selo de prioridade exibido na coluna (sem rótulo de cabeçalho) da Cascata.
+function PriorityTag({ level }: { level?: 'Alta' | 'Média' | 'Baixa' | null }) {
+  if (!level) return <div className="w-16 shrink-0" />;
+  return (
+    <div className="w-16 shrink-0 flex justify-center">
+      <span className={clsx(
+        'px-2 py-0.5 rounded text-[10px] font-black uppercase',
+        level === 'Alta' ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400'
+          : level === 'Média' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+            : 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400'
+      )}>{level}</span>
+    </div>
+  );
 }
 
 // Atividades a exibir sob um item: filtradas pela busca+filtros e ordenadas por prioridade.
@@ -100,15 +147,17 @@ function Header({ icon: Icon, title, subtitle }: { icon: any; title: string; sub
 }
 
 // Formulário inline para criar iniciativa/projeto
-function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }: {
+function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated, responsibles = [] }: {
   kind: 'project' | 'initiative'; parentId?: number | null;
   projects?: Initiative[];
   onCreate: (data: Partial<Initiative>) => Promise<number | void>; onCancel: () => void;
   onCreated?: (createdId?: number) => void;
+  responsibles?: Responsible[];
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('planning');
+  const [responsible, setResponsible] = useState('');
   const [projectId, setProjectId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
@@ -120,8 +169,8 @@ function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }
     setSaving(true);
     try {
       const finalParent = parentId != null ? parentId : (showProjectPicker && projectId ? Number(projectId) : null);
-      const createdId = await onCreate({ name: name.trim(), description: description.trim(), status, kind, parentId: finalParent });
-      setName(''); setDescription(''); setStatus('planning'); setProjectId('');
+      const createdId = await onCreate({ name: name.trim(), description: description.trim(), status, responsible: responsible.trim() || null, kind, parentId: finalParent });
+      setName(''); setDescription(''); setStatus('planning'); setResponsible(''); setProjectId('');
       onCancel();
       onCreated?.(typeof createdId === 'number' ? createdId : undefined);
     } finally { setSaving(false); }
@@ -135,6 +184,11 @@ function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }
       <input value={description} onChange={e => setDescription(e.target.value)}
         placeholder="Descrição (opcional)"
         className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20" />
+      <select value={responsible} onChange={e => setResponsible(e.target.value)}
+        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20">
+        <option value="">Responsável (opcional)</option>
+        {responsibles.filter(r => r.active).map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+      </select>
       {showProjectPicker && (
         <div className="space-y-1">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Projeto (opcional)</label>
@@ -162,19 +216,30 @@ function NewItemForm({ kind, parentId, projects, onCreate, onCancel, onCreated }
 }
 
 // Formulário inline para editar nome/descrição/status de uma iniciativa ou projeto
-function EditItemForm({ item, onSave, onCancel }: {
+function EditItemForm({ item, onSave, onCancel, responsibles = [] }: {
   item: Initiative; onSave: (data: Partial<Initiative>) => void | Promise<void>; onCancel: () => void;
+  responsibles?: Responsible[];
 }) {
   const [name, setName] = useState(item.name);
   const [description, setDescription] = useState(item.description || '');
   const [status, setStatus] = useState(item.status || 'planning');
+  const [responsible, setResponsible] = useState(item.responsible || '');
+  const [isHighlight, setIsHighlight] = useState(!!item.isHighlight);
+  const [highlightColor, setHighlightColor] = useState(item.highlightColor || 'red');
   const [saving, setSaving] = useState(false);
   const submit = async () => {
     if (!name.trim() || saving) return;
     setSaving(true);
-    try { await onSave({ name: name.trim(), description: description.trim(), status }); onCancel(); }
+    try { await onSave({ name: name.trim(), description: description.trim(), status, responsible: responsible.trim() || null, isHighlight, highlightColor: isHighlight ? highlightColor : null }); onCancel(); }
     finally { setSaving(false); }
   };
+  const HL_COLORS: { key: string; dot: string }[] = [
+    { key: 'red', dot: 'bg-brand-red' },
+    { key: 'amber', dot: 'bg-amber-500' },
+    { key: 'green', dot: 'bg-green-500' },
+    { key: 'blue', dot: 'bg-blue-500' },
+    { key: 'purple', dot: 'bg-purple-500' },
+  ];
   return (
     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3 border border-slate-200 dark:border-slate-700">
       <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()}
@@ -183,6 +248,27 @@ function EditItemForm({ item, onSave, onCancel }: {
       <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
         placeholder="Descrição"
         className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20 resize-none" />
+      <select value={responsible} onChange={e => setResponsible(e.target.value)}
+        className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none focus:ring-2 focus:ring-brand-red/20">
+        <option value="">Responsável (opcional)</option>
+        {responsibles.filter(r => r.active).map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+      </select>
+      {/* Destaque no Painel de Demandas */}
+      <div className="flex items-center gap-3 flex-wrap bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5">
+        <button type="button" onClick={() => setIsHighlight(v => !v)}
+          className={clsx('relative w-9 h-5 rounded-full transition-colors shrink-0', isHighlight ? 'bg-brand-red' : 'bg-slate-300 dark:bg-slate-600')}>
+          <span className={clsx('absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all', isHighlight ? 'left-[18px]' : 'left-0.5')} />
+        </button>
+        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Destacar no Painel de Demandas</span>
+        {isHighlight && (
+          <div className="flex items-center gap-1.5 ml-auto">
+            {HL_COLORS.map(c => (
+              <button key={c.key} type="button" onClick={() => setHighlightColor(c.key)}
+                className={clsx('w-5 h-5 rounded-full transition-all', c.dot, highlightColor === c.key ? 'ring-2 ring-offset-1 ring-slate-400 dark:ring-offset-slate-900' : 'opacity-60 hover:opacity-100')} />
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold dark:text-white outline-none">
@@ -226,8 +312,8 @@ function ActivityList({ initiativeId, tasks, onSelectTask, ctx }: { initiativeId
 // =========================================================================
 // TELA: PROJETOS  (Projeto → Iniciativas → Atividades → checklist)
 // =========================================================================
-export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onNewActivity, onAttachMany, onReorder, query, filteredTaskIds, narrowing }: HierarchyActions) {
-  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate, onSelectTask, onNewActivity, onAttachMany, onReorder, query, filteredTaskIds, narrowing, responsibleFilter, responsibles }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing, responsibleFilter };
   const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
   const projectNameById = new Map(initiatives.filter(i => i.kind === 'project').map(p => [p.id, p.name]));
   // Iniciativas que podem ser atreladas a um projeto: qualquer iniciativa que não esteja já nele.
@@ -279,6 +365,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
           onCreate={onCreate}
           onCancel={() => setCreating(false)}
           onCreated={(id) => { if (id) { setExpanded(id); setAddingInitTo(id); } }}
+          responsibles={responsibles}
         />
       )}
 
@@ -291,7 +378,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
             <div key={proj.id} className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
               <div className="p-6">
                 {editingId === proj.id ? (
-                  <EditItemForm item={proj} onSave={(data) => onUpdate(proj.id, data)} onCancel={() => setEditingId(null)} />
+                  <EditItemForm item={proj} onSave={(data) => onUpdate(proj.id, data)} onCancel={() => setEditingId(null)} responsibles={responsibles} />
                 ) : (<>
                 <div className="flex items-start justify-between gap-4">
                   <button onClick={() => setExpanded(isOpen ? null : proj.id)} className="flex items-start gap-3 min-w-0 flex-1 text-left">
@@ -302,7 +389,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                         <h3 className="text-lg font-black text-slate-800 dark:text-white truncate">{proj.name}</h3>
                       </div>
                       {proj.description && <p className="text-xs text-slate-500 mt-1">{proj.description}</p>}
-                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">{statusLabel(proj.status)} · {kids.length} iniciativa(s)</p>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">{statusLabel(proj.status)} · {kids.length} iniciativa(s){proj.responsible ? ` · 👤 ${proj.responsible}` : ''}</p>
                     </div>
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
@@ -338,7 +425,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                             dragKid === k.id && 'opacity-40', dragOverKid === k.id && 'ring-2 ring-brand-red/50')}
                         >
                           {editingId === k.id ? (
-                            <div className="mb-2"><EditItemForm item={k} onSave={(data) => onUpdate(k.id, data)} onCancel={() => setEditingId(null)} /></div>
+                            <div className="mb-2"><EditItemForm item={k} onSave={(data) => onUpdate(k.id, data)} onCancel={() => setEditingId(null)} responsibles={responsibles} /></div>
                           ) : (
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-2 min-w-0">
@@ -347,7 +434,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
                               <span className="text-sm font-bold dark:text-white truncate">{k.name}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-400 uppercase font-bold">{statusLabel(k.status)}</span>
+                              <span className="text-[10px] text-slate-400 uppercase font-bold">{statusLabel(k.status)}{k.responsible ? ` · 👤 ${k.responsible}` : ''}</span>
                               <button onClick={() => setEditingId(k.id)} title="Editar nome/descrição" className="p-1.5 text-slate-400 hover:text-brand-red rounded-lg"><Pencil size={13} /></button>
                               <button onClick={() => onUpdate(k.id, { parentId: null })} title="Desatrelar do projeto" className="p-1.5 text-slate-400 hover:text-brand-red rounded-lg"><Link2 size={13} /></button>
                               <button onClick={() => onDelete(k.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"><Trash2 size={13} /></button>
@@ -365,7 +452,7 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
 
                       {/* Ações: nova iniciativa / atrelar existente */}
                       {addingInitTo === proj.id ? (
-                        <NewItemForm kind="initiative" parentId={proj.id} onCreate={onCreate} onCancel={() => setAddingInitTo(null)} />
+                        <NewItemForm kind="initiative" parentId={proj.id} onCreate={onCreate} onCancel={() => setAddingInitTo(null)} responsibles={responsibles} />
                       ) : attachTo === proj.id ? (
                         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Atrelar iniciativas a este projeto</p>
@@ -425,8 +512,8 @@ export function ProjectsView({ initiatives, tasks, onCreate, onDelete, onUpdate,
 // =========================================================================
 // TELA: INICIATIVAS AVULSAS
 // =========================================================================
-export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask, onNewActivity, query, filteredTaskIds, narrowing }: HierarchyActions) {
-  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpdate, onPromote, onSelectTask, onNewActivity, query, filteredTaskIds, narrowing, responsibleFilter, responsibles }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing, responsibleFilter };
   const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null && itemVisible(i, initiatives, tasks, ctx));
   const projects = initiatives.filter(i => i.kind === 'project');
   const [creating, setCreating] = useState(false);
@@ -446,7 +533,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
         </button>
       </div>
 
-      {creating && <NewItemForm kind="initiative" projects={projects} onCreate={onCreate} onCancel={() => setCreating(false)} />}
+      {creating && <NewItemForm kind="initiative" projects={projects} onCreate={onCreate} onCancel={() => setCreating(false)} responsibles={responsibles} />}
 
       <div className="space-y-3">
         {standalone.map(ini => {
@@ -456,7 +543,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
             <div key={ini.id} className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 overflow-hidden">
               <div className="p-5">
                 {editingId === ini.id ? (
-                  <EditItemForm item={ini} onSave={(data) => onUpdate(ini.id, data)} onCancel={() => setEditingId(null)} />
+                  <EditItemForm item={ini} onSave={(data) => onUpdate(ini.id, data)} onCancel={() => setEditingId(null)} responsibles={responsibles} />
                 ) : (
                 <>
                 <div className="flex items-start justify-between gap-4">
@@ -468,7 +555,7 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
                         <h3 className="text-base font-black text-slate-800 dark:text-white truncate">{ini.name}</h3>
                       </div>
                       {ini.description && <p className="text-xs text-slate-500 mt-1">{ini.description}</p>}
-                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">{statusLabel(ini.status)}</p>
+                      <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-wider">{statusLabel(ini.status)}{ini.responsible ? ` · 👤 ${ini.responsible}` : ''}</p>
                     </div>
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
@@ -540,8 +627,8 @@ export function InitiativesView({ initiatives, tasks, onCreate, onDelete, onUpda
 // =========================================================================
 // TELA: CASCATA (OKR) — árvore expansível com status/progresso por nível
 // =========================================================================
-export function CascadeView({ initiatives, tasks, onSelectTask, query, filteredTaskIds, narrowing }: HierarchyActions) {
-  const ctx: FilterCtx = { query, filteredTaskIds, narrowing };
+export function CascadeView({ initiatives, tasks, onSelectTask, query, filteredTaskIds, narrowing, responsibleFilter }: HierarchyActions) {
+  const ctx: FilterCtx = { query, filteredTaskIds, narrowing, responsibleFilter };
   const projects = initiatives.filter(i => i.kind === 'project' && itemVisible(i, initiatives, tasks, ctx));
   const standalone = initiatives.filter(i => i.kind === 'initiative' && i.parentId == null && itemVisible(i, initiatives, tasks, ctx));
 
@@ -585,6 +672,7 @@ function CascadeNode({ node, initiatives, tasks, level, onSelectTask, ctx }: {
         </button>
         <KindBadge kind={node.kind} size="xs" />
         <span className="text-sm font-bold dark:text-white truncate flex-1 min-w-0">{node.name}</span>
+        <PriorityTag level={nodePriority(node, initiatives, tasks)} />
         <div className="w-32 shrink-0"><ProgressBar p={prog} /></div>
       </div>
 
@@ -618,6 +706,7 @@ function ActivityNode({ task, level, onSelectTask }: { task: Task; level: number
         </button>
         <Target size={13} className="text-slate-400 shrink-0" />
         <button onClick={() => onSelectTask(task)} className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate flex-1 min-w-0 text-left hover:text-brand-red">{task.name}</button>
+        <PriorityTag level={critLabel(critRank(task.criticality))} />
         <div className="w-32 shrink-0"><ProgressBar p={p} tint="bg-slate-400" /></div>
       </div>
       {open && items.map((it, i) => (

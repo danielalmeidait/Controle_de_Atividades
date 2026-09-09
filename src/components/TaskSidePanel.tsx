@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, History, Plus, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
-import { Task, Theme, System, TaskTypeModel, TaskStatusModel, ChecklistItem, UpdateEntry, Initiative } from '../types';
+import { Task, Theme, System, TaskTypeModel, TaskStatusModel, ChecklistItem, UpdateEntry, Initiative, Responsible } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -21,9 +21,10 @@ interface TaskSidePanelProps {
   taskTypes: TaskTypeModel[];
   taskStatuses: TaskStatusModel[];
   initiatives: Initiative[];
+  responsibles?: Responsible[];
 }
 
-export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes, systems, taskTypes, taskStatuses, initiatives }: TaskSidePanelProps) {
+export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes, systems, taskTypes, taskStatuses, initiatives, responsibles = [] }: TaskSidePanelProps) {
   const [editedTask, setEditedTask] = useState<Partial<Task>>({});
   const [newUpdate, setNewUpdate] = useState('');
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
@@ -153,6 +154,22 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
                   />
                 </div>
 
+                {/* Responsável */}
+                <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2 w-1/3">
+                    Responsável
+                  </span>
+                  <select
+                    name="responsible"
+                    value={editedTask.responsible || ''}
+                    onChange={handleChange}
+                    className="text-sm font-medium text-right bg-transparent outline-none flex-1 text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    <option value="">Não atribuído</option>
+                    {responsibles.filter(r => r.active).map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  </select>
+                </div>
+
                 {/* Tema */}
                 <div className="flex items-center justify-between border-b dark:border-slate-800 pb-2">
                   <span className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2 w-1/3">
@@ -224,6 +241,29 @@ export function TaskSidePanel({ task, isOpen, onClose, onSave, onDelete, themes,
                     <label className="text-[10px] font-bold text-slate-400 uppercase">Área Demandante</label>
                     <input name="requestingArea" value={editedTask.requestingArea || ''} onChange={handleChange} placeholder="Ex: Comercial" className="w-full p-2 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg text-sm dark:text-white outline-none" />
                   </div>
+                </div>
+
+                {/* Destaque no Painel de Demandas */}
+                <div className="flex items-center gap-3 flex-wrap bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg p-3">
+                  <button type="button" onClick={() => setEditedTask(prev => ({ ...prev, isHighlight: !prev.isHighlight, highlightColor: prev.highlightColor || 'red' }))}
+                    className={cn('relative w-9 h-5 rounded-full transition-colors shrink-0', editedTask.isHighlight ? 'bg-brand-red' : 'bg-slate-300 dark:bg-slate-600')}>
+                    <span className={cn('absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all', editedTask.isHighlight ? 'left-[18px]' : 'left-0.5')} />
+                  </button>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Destacar no Painel de Demandas</span>
+                  {editedTask.isHighlight && (
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      {[
+                        { key: 'red', dot: 'bg-brand-red' },
+                        { key: 'amber', dot: 'bg-amber-500' },
+                        { key: 'green', dot: 'bg-green-500' },
+                        { key: 'blue', dot: 'bg-blue-500' },
+                        { key: 'purple', dot: 'bg-purple-500' },
+                      ].map(c => (
+                        <button key={c.key} type="button" onClick={() => setEditedTask(prev => ({ ...prev, highlightColor: c.key }))}
+                          className={cn('w-5 h-5 rounded-full transition-all', c.dot, (editedTask.highlightColor || 'red') === c.key ? 'ring-2 ring-offset-1 ring-slate-400 dark:ring-offset-slate-800' : 'opacity-60 hover:opacity-100')} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
