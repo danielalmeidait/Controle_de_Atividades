@@ -9,3 +9,6 @@ backups/incremental/*.db
 # Database
 *.db
 *.db-journal
+
+# Script de teste/probe
+test.ts

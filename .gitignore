@@ -13,3 +13,6 @@ CHAT_CONTEXT.md
 Iniciar aplicação.bat
 Parar aplicacao.bat
 .agent/
+
+# Arquivos de trabalho/temporários
+scratch/
