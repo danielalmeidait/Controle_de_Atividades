@@ -1,4 +1,4 @@
-# ESO IT — Activities Control
+# ESO IT - Controle de Atividades (Activities Control)
 
 Sistema de gestão de atividades de TI desenvolvido para controle de demandas, iniciativas, métricas e ideias da equipe ESO IT.
 
