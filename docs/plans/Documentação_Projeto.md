@@ -28,11 +28,17 @@ O **Activities Control** organiza o trabalho de TI em uma hierarquia de quatro n
 
 - Cadastro e acompanhamento de **Projetos**, **Iniciativas**, **Atividades** e **Tarefas** (checklist)
 - **Painel Executivo** com KPIs reais, segmentação e progresso agregado (roll-up)
+- **Painel de Demandas** (executivo, mensal) — KPIs do mês, entregas por iniciativa e **Highlights** (destaques marcados manualmente em iniciativas/atividades)
+- **Cronograma por semana** — timeline/Gantt hierárquico e expansível, com barras por status derivadas das datas de início/prazo
 - **Kanban** com dots coloridos por status e tag de tipo (Projeto/Iniciativa)
-- **Visão Cascata (OKR)** — árvore expansível até o checklist de cada tarefa
+- **Visão Cascata (OKR)** — árvore expansível até o checklist de cada tarefa, com coluna de prioridade
+- **Visão Consolidada** — tabela de atividades com colunas de status, prioridade, prazo e demandante
+- **Responsáveis** — cadastro central de responsáveis + **filtro por responsável** no topo, aplicado a projetos, iniciativas e atividades
 - **Segundo Cérebro** — ideias/anotações
-- Catálogos de **Frentes, Sistemas, Tipos, Status e Áreas de Negócio** (com responsável)
+- Catálogos de **Frentes, Sistemas, Tipos, Status, Áreas de Negócio e Responsáveis**
 - Backup automático do banco e modo escuro neutro
+
+> As **telas de navegação** "Frentes" e "Sistemas" foram removidas (não eram mais necessárias); os catálogos de Frentes/Sistemas permanecem em **Configurações**, pois alimentam os campos das atividades.
 
 ---
 
@@ -86,16 +92,18 @@ O Vite (`vite.config.ts`) faz proxy de `/api` para `localhost:3001`. **HMR/file-
 
 ```
 src/
-├── App.tsx                 # Raiz — abas, estado, fetch, modais, Painel Executivo
-├── constants.ts, types.ts  # Tipos do domínio (Task, Initiative, BusinessArea, ...)
+├── App.tsx                 # Raiz — abas, estado, fetch, modais, filtros de topo e as
+│                           #   telas Painel, Demandas, Consolidado e Configurações
+├── constants.ts, types.ts  # Tipos do domínio (Task, Initiative, BusinessArea, Responsible, ...)
 ├── lib/
 │   └── rollup.ts           # Cálculo de progresso agregado (checklist → atividade → projeto)
 └── components/
     ├── HierarchyViews.tsx  # Telas Projetos, Iniciativas e Cascata (OKR)
+    ├── TimelineView.tsx    # Tela Cronograma (Gantt semanal, hierárquico e expansível)
     ├── KindBadge.tsx       # Badge Projeto (vermelho) / Iniciativa (cinza)
     ├── KanbanBoard.tsx     # Kanban (dots por status + tag de tipo)
     ├── TaskCard.tsx        # Card de atividade
-    ├── TaskSidePanel.tsx   # Editor lateral (com seletor Iniciativa/Projeto)
+    ├── TaskSidePanel.tsx   # Editor lateral (seletor Iniciativa/Projeto, Responsável, Highlight)
     └── AISupportForm.tsx   # Formulário de roadmap de IA
 
 server/
@@ -111,12 +119,15 @@ server/
 Definidos em [server/prisma/schema.prisma](server/prisma/schema.prisma) (SQLite via Prisma).
 
 ### Task (Atividade)
-Campos principais: `name, type, theme, system, requester, criticality, status, deadline?, requestDate, requestingArea, checklist (JSON), lastUpdate, updateHistory (JSON), description` + **`initiativeId?`** (vínculo à Iniciativa/Projeto; `null` = avulsa) + `deliveryId?`, `position?`.
+Campos principais: `name, type, theme, system, requester, criticality, status, deadline?, requestDate, requestingArea, checklist (JSON), lastUpdate, updateHistory (JSON), description` + **`initiativeId?`** (vínculo à Iniciativa/Projeto; `null` = avulsa) + `deliveryId?`, `position?` + **`responsible?`** (responsável pela atividade) + **`isHighlight`** / **`highlightColor?`** (destaque no Painel de Demandas).
 
 ### Initiative (Projeto **ou** Iniciativa)
-`name`, **`kind`** (`"project"` | `"initiative"`), **`parentId?`** (auto-relação — projeto pai), `description`, `theme?`, `system?`, `status` (planning/active/paused/completed), `startDate?`, `targetDate?`.
+`name`, **`kind`** (`"project"` | `"initiative"`), **`parentId?`** (auto-relação — projeto pai), `description`, `theme?`, `system?`, `status` (planning/active/paused/completed), `startDate?`, `targetDate?` + **`responsible?`** + **`isHighlight`** / **`highlightColor?`**.
 
-### BusinessArea (Área de Negócio) — novo
+### Responsible (Responsável) — novo
+`name` (único), `email?`, `active` (default `true`). Cadastro central usado pelo **filtro por responsável** e pelos seletores de responsável em projeto/iniciativa/atividade (só os `active` aparecem nos selects).
+
+### BusinessArea (Área de Negócio)
 `name` (único), **`responsible`** (responsável pela área).
 
 ### Catálogos (nome único)
@@ -135,9 +146,10 @@ Base: `http://localhost:3001/api` — [server/src/routes.ts](server/src/routes.t
 
 | Recurso | Endpoints |
 | --- | --- |
-| Atividades (tasks) | `GET/POST /tasks`, `GET/PUT/DELETE /tasks/:id` — aceitam `initiativeId` |
-| Iniciativas/Projetos | `GET /initiatives?kind=&parentId=`, `POST /initiatives`, `PUT/DELETE /initiatives/:id`, **`PATCH /initiatives/:id/promote`** |
+| Atividades (tasks) | `GET/POST /tasks`, `GET/PUT/DELETE /tasks/:id` — aceitam `initiativeId`, `responsible`, `isHighlight`, `highlightColor` |
+| Iniciativas/Projetos | `GET /initiatives?kind=&parentId=`, `POST /initiatives`, `PUT/DELETE /initiatives/:id`, **`PATCH /initiatives/:id/promote`** — aceitam `responsible`, `isHighlight`, `highlightColor` |
 | Áreas de Negócio | `GET/POST /business-areas`, `PUT/DELETE /business-areas/:id` |
+| Responsáveis | `GET/POST /responsibles`, `PUT/DELETE /responsibles/:id` |
 | Frentes / Sistemas / Tipos / Status | `GET/POST /themes /systems /task-types /task-statuses` (+ `PUT/DELETE /:id`) |
 | Ideias | `GET/POST /ideas`, `PUT/DELETE /ideas/:id` |
 | Entregas | `GET/POST /deliveries`, `PUT/DELETE /deliveries/:id` |
@@ -152,20 +164,25 @@ Regra de integridade: `kind="project"` força `parentId=null` (sanitizado no bac
 
 Navegação em [src/App.tsx](src/App.tsx):
 
+Menu lateral (ordem): **Painel · Demandas · Projetos · Iniciativas · Cascata** (submenu: *Consolidado*, *Cronograma*) **· Kanban · Anotações · Configurações**.
+
 | Aba | Descrição |
 | --- | --- |
 | **Painel** (Executivo) | Segmentação Tudo/Projetos/Iniciativas · KPIs reais (projetos ativos, iniciativas, atividades WIP, % concluído via roll-up, atrasadas) · progresso por projeto/iniciativa · cortes por Frente/Sistema/Área · atrasadas · atividade recente · alerta de itens parados |
+| **Demandas** (Painel de Demandas) | Painel executivo mensal: KPIs do mês (entregas realizadas, em andamento, backlog) · **entregas por iniciativa** (projeto e avulsa) · **Highlights do mês** — cards das iniciativas/atividades marcadas com o seletor "Destacar no Painel de Demandas" (com cor) |
 | **Projetos** | Cria projeto; dentro dele cria iniciativas (feature) e atrela iniciativas existentes; lista atividades com progresso |
 | **Iniciativas** | Iniciativas avulsas; **promover a projeto**; mover para um projeto |
-| **Cascata** | Árvore OKR expansível: Projeto ▸ Iniciativa ▸ Atividade ▸ checklist, com progresso por nível |
-| **Frentes / Sistemas / Consolidado** | Agrupamentos e visão consolidada das atividades |
+| **Cascata** (submenu) | *Cascata (OKR)*: árvore expansível Projeto ▸ Iniciativa ▸ Atividade ▸ checklist, com progresso e **coluna de prioridade** por nível. Submenu: **Consolidado** (tabela de atividades com colunas Status, **Prioridade**, Prazo, Demandante) e **Cronograma** |
+| **Cronograma** | Timeline/Gantt **por semana** (seg–sex), hierárquico e **expansível** (Projeto → Iniciativa → Atividade). Datas de projeto/iniciativa **derivadas dos filhos**; barra da atividade de `requestDate` → `deadline`; cor por status (A definir/Em andamento/Concluído/Prazo vencido); KPIs, marcador da semana atual, aviso de itens sem data-alvo; clique na barra abre o editor |
 | **Kanban** | Colunas por status (dots coloridos) · tag Projeto/Iniciativa nos cards · filtros Frente/Sistema |
 | **Anotações** | Segundo Cérebro (ideias) |
-| **Configurações** | Catálogos: Frentes, Sistemas, Tipos, Status e **Áreas de Negócio (com responsável)** · Backup |
+| **Configurações** | Catálogos: Frentes, Sistemas, Tipos, Status, **Áreas de Negócio (com responsável)** e **Responsáveis** (CRUD: nome, e-mail, ativo/inativo) · Backup |
 
-> A antiga aba **Métricas** foi removida; seus widgets de dado real (tendência e alerta de atividades paradas) foram absorvidos pelo Painel Executivo.
+> As telas de navegação **Métricas**, **Frentes** e **Sistemas** foram removidas ao longo da evolução; os catálogos de Frentes/Sistemas permanecem em Configurações.
 
-O editor lateral de atividade ([TaskSidePanel](src/components/TaskSidePanel.tsx)) tem um seletor **Iniciativa / Projeto** que grava o `initiativeId` — é assim que uma atividade entra na hierarquia.
+**Filtros do topo** (aplicados às telas): **Status**, **Área Demandante** e **Responsável** (multi-seleção) + busca textual. O filtro por Responsável mostra projetos, iniciativas e atividades sob a responsabilidade selecionada.
+
+O editor lateral de atividade ([TaskSidePanel](src/components/TaskSidePanel.tsx)) tem seletor **Iniciativa / Projeto** (grava `initiativeId`), seletor **Responsável** (a partir do cadastro) e toggle **Destacar no Painel de Demandas**.
 
 ---
 
@@ -211,9 +228,13 @@ No Windows há `Iniciar aplicação.bat` / `Parar aplicacao.bat`. Verificação:
 - **JSON em colunas texto**: `Task.checklist` e `Task.updateHistory`.
 - **Vínculo à hierarquia**: `Task.initiativeId` (aponta para um `Initiative`, projeto ou iniciativa).
 - **Roll-up de progresso**: `src/lib/rollup.ts` agrega o checklist das atividades até o nível de iniciativa e projeto (mesma conta usada no Painel e na Cascata).
+- **Cronograma (datas)**: projetos/iniciativas não têm data própria — a timeline **deriva** início/fim das atividades filhas (início = solicitação mais antiga, fim = prazo mais distante). Datas inválidas/sentinela (fora da faixa 2000–2100, ex.: `0001-01-01`) são ignoradas para não estourar a linha do tempo; a atividade cai em "sem data-alvo".
+- **Highlights**: `Task`/`Initiative` têm `isHighlight` + `highlightColor`; quando ligados, aparecem na tela **Demandas**.
+- **Responsáveis**: cadastro central em `Responsible`; o filtro do topo e os selects usam apenas responsáveis `active`.
 - **Vite sem HMR**: reiniciar o dev server após editar o frontend.
+- **Migrations no Windows**: ambiente não-interativo — aplicar com `prisma migrate deploy` e regenerar o client com o backend **parado** (a DLL do Prisma fica travada enquanto o servidor roda).
 - **Idioma**: domínio e UI em português (pt-BR).
 
 ---
 
-_Documentação atualizada em 2026-08-28._
+_Documentação atualizada em 2026-09-09._

@@ -60,7 +60,8 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { ProjectsView, InitiativesView, CascadeView, itemVisible } from './components/HierarchyViews';
 import { KindBadge } from './components/KindBadge';
 import { rollupTasks, rollupProject, activitiesOf, isDoneStatus } from './lib/rollup';
-import { Briefcase, Target, Flag } from 'lucide-react';
+import { Briefcase, Target, Flag, CalendarRange } from 'lucide-react';
+import { TimelineView } from './components/TimelineView';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -810,7 +811,7 @@ const IdeaModal = ({ idea, isOpen, onClose, onSave, onDelete, onTurnIntoTask, ta
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [activeTab, setActiveTab] = useState<'painel' | 'demandas' | 'projects' | 'initiatives' | 'cascade' | 'themes' | 'systems' | 'consolidated' | 'kanban' | 'ideas' | 'ai-support' | 'settings'>('painel');
+  const [activeTab, setActiveTab] = useState<'painel' | 'demandas' | 'projects' | 'initiatives' | 'cascade' | 'consolidated' | 'timeline' | 'kanban' | 'ideas' | 'ai-support' | 'settings'>('painel');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -828,7 +829,6 @@ export default function App() {
   const [editingStatus, setEditingStatus] = useState<Partial<TaskStatusModel> | null>(null);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
-  const [hoveredTaskId, setHoveredTaskId] = useState<number | null>(null);
   const [isTableFullScreen, setIsTableFullScreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [themeFilter, setThemeFilter] = useState<string | null>(null);
@@ -1830,186 +1830,6 @@ export default function App() {
     );
   };
 
-  const renderThemes = () => (
-    <div className="space-y-8">
-      <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg">
-        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Frentes de Trabalho</h1>
-      </div>
-
-      <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar snap-x">
-        {stats?.themes.map((theme) => (
-          <motion.div
-            key={theme.name}
-            whileHover={{ y: -5 }}
-            onClick={() => {
-              setThemeFilter(themeFilter === theme.name ? null : theme.name);
-              setSystemFilter(null);
-            }}
-            className={cn(
-              "min-w-[180px] p-6 rounded-3xl shadow-xl flex flex-col items-center text-center snap-start cursor-pointer transition-all",
-              themeFilter === theme.name
-                ? "bg-brand-red/5 border-2 border-brand-red dark:bg-brand-red/10 dark:border-brand-red"
-                : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800"
-            )}
-          >
-            <h3 className="text-2xl font-bold dark:text-white mb-2">{theme.name}</h3>
-            <span className="text-sm font-bold text-slate-400">{theme.taskCount}</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase mt-1">
-              {theme.inProgressCount} | Em andamento
-            </span>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-4 overflow-hidden">
-              <div
-                className="h-full bg-brand-red"
-                style={{ width: `${theme.taskCount > 0 ? (theme.inProgressCount / theme.taskCount) * 100 : 0}%` }}
-              />
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 flex flex-col items-center">
-          <DonutChart tasks={filteredTasks} />
-          <div className="mt-6 flex flex-wrap justify-center gap-4 text-[10px] font-bold uppercase">
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-brand-red rounded-full" /> Pendente / Outros</div>
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-400 rounded-full" /> Em Andamento</div>
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-700 rounded-full" /> Concluído</div>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-bold uppercase tracking-widest text-slate-500">Fluxo de Atividades</h2>
-          </div>
-          <div className="space-y-3">
-            {filteredTasks.map((task) => (
-              <div
-                key={task.id}
-                className="relative group flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer"
-                onClick={() => { setSelectedTask(task); setIsModalOpen(true); }}
-                onMouseEnter={() => setHoveredTaskId(task.id)}
-                onMouseLeave={() => setHoveredTaskId(null)}
-              >
-                <div className="flex items-center gap-4 flex-1 overflow-hidden">
-                  <span className="font-mono text-slate-400 text-xs">#{task.id}</span>
-                  <div className="flex flex-col flex-1 truncate">
-                    <span className="font-bold dark:text-white truncate">{task.name}</span>
-                    <span className="text-[10px] text-slate-500 uppercase">{task.theme} • {task.requester}</span>
-                  </div>
-                  <div className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase hidden sm:block",
-                    task.criticality === 'Alta' ? "bg-red-100 text-red-700" :
-                      task.criticality === 'Média' ? "bg-amber-100 text-amber-700" :
-                        "bg-green-100 text-green-700"
-                  )}>
-                    {task.criticality}
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-[10px] font-black text-slate-400 uppercase">{task.status}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{task.deadline ? format(parseISO(task.deadline), 'dd/MM') : '-'}</span>
-                  </div>
-                </div>
-
-                <div className="ml-4 flex items-center gap-2">
-                  <AnimatePresence>
-                    {hoveredTaskId === task.id && (
-                      <motion.div
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 10 }}
-                        className="absolute right-14 top-1/2 -translate-y-1/2 bg-white dark:bg-slate-900 p-3 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 z-10 max-w-[200px]"
-                      >
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Status Report</p>
-                        <p className="text-[10px] dark:text-slate-300 italic">"{task.lastUpdate}"</p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  <ChevronRight size={18} className="text-slate-300 group-hover:text-brand-red transition-colors" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderSystems = () => (
-    <div className="space-y-8">
-      <div className="bg-brand-red p-8 rounded-b-3xl -mx-8 -mt-8 shadow-lg">
-        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Sistemas - ESO</h1>
-      </div>
-
-      <div className="flex gap-6 overflow-x-auto pb-6 custom-scrollbar snap-x">
-        {stats?.systems.map((system) => (
-          <motion.div
-            key={system.name}
-            whileHover={{ y: -5 }}
-            onClick={() => {
-              setSystemFilter(systemFilter === system.name ? null : system.name);
-              setThemeFilter(null);
-            }}
-            className={cn(
-              "min-w-[180px] p-6 rounded-3xl shadow-xl flex flex-col items-center text-center snap-start cursor-pointer transition-all",
-              systemFilter === system.name
-                ? "bg-brand-red/5 border-2 border-brand-red dark:bg-brand-red/10 dark:border-brand-red"
-                : "bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800"
-            )}
-          >
-            <h3 className="text-2xl font-bold dark:text-white mb-2">{system.name}</h3>
-            <span className="text-sm font-bold text-slate-400">{system.taskCount}</span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase mt-1">
-              {system.inProgressCount} | Em andamento
-            </span>
-            <div className="w-full h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-4 overflow-hidden">
-              <div
-                className="h-full bg-brand-red"
-                style={{ width: `${system.taskCount > 0 ? (system.inProgressCount / system.taskCount) * 100 : 0}%` }}
-              />
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 flex flex-col items-center">
-          <DonutChart tasks={filteredTasks} />
-          <div className="mt-6 flex flex-wrap justify-center gap-4 text-[10px] font-bold uppercase">
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-brand-red rounded-full" /> Pendente / Outros</div>
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-400 rounded-full" /> Em Andamento</div>
-            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-700 rounded-full" /> Concluído</div>
-          </div>
-        </div>
-
-        <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800">
-          <div className="space-y-3">
-            {filteredTasks.map((task) => (
-              <div
-                key={task.id}
-                className="relative group flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
-                onClick={() => { setSelectedTask(task); setIsModalOpen(true); }}
-              >
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="p-2 bg-brand-red/10 rounded-lg text-brand-red">
-                    <Monitor size={18} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold dark:text-white">{task.name}</span>
-                    <span className="text-[10px] text-slate-500 uppercase">{task.system} • {task.type}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold dark:text-white">{task.status}</span>
-                  <span className="text-[10px] text-slate-400">{task.deadline ? format(parseISO(task.deadline), 'dd/MM/yyyy') : '-'}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderConsolidated = () => {
     return (
       <div className="space-y-6">
@@ -2668,9 +2488,8 @@ export default function App() {
             { id: 'projects',     icon: Briefcase,       label: 'Projetos'      },
             { id: 'initiatives',  icon: Lightbulb,       label: 'Iniciativas'   },
             { id: 'cascade',      icon: Target,          label: 'Cascata', children: [
-              { id: 'themes',       icon: LayoutDashboard, label: 'Frentes'     },
-              { id: 'systems',      icon: Monitor,         label: 'Sistemas'    },
               { id: 'consolidated', icon: Layers,          label: 'Consolidado' },
+              { id: 'timeline',     icon: CalendarRange,   label: 'Cronograma'  },
             ] },
             { id: 'kanban',       icon: ListTodo,       label: 'Kanban'        },
             { id: 'ideas',        icon: NotebookPen,     label: 'Anotações'     },
@@ -3113,9 +2932,8 @@ export default function App() {
             {activeTab === 'projects' && <ProjectsView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
             {activeTab === 'initiatives' && <InitiativesView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
             {activeTab === 'cascade' && <CascadeView {...hierarchyActions} query={searchQuery} filteredTaskIds={filteredTaskIds} narrowing={searchActive || filtersActive} responsibleFilter={responsibleFilter} responsibles={responsibles} />}
-            {activeTab === 'themes' && renderThemes()}
-            {activeTab === 'systems' && renderSystems()}
             {activeTab === 'consolidated' && renderConsolidated()}
+            {activeTab === 'timeline' && <TimelineView initiatives={initiatives} tasks={tasks} onSelectTask={(t) => { setSelectedTask(t); setIsModalOpen(true); }} />}
             {activeTab === 'kanban' && (
               <KanbanBoard
                 tasks={filteredTasks}
